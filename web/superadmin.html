@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Superadmin — InnovateIT Courses</title>
+<link rel="icon" href="img/logo.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="brand"><img src="img/logo.png" alt=""><div>InnovateIT Courses<small>Superadmin</small></div></div>
+    <div class="spacer"></div>
+    <a class="btn sm" href="panel.html" aria-label="Kurs panelini ochish"><span class="hide-sm">Kurs panelini ochish</span><span class="sm-only">Panel</span> →</a>
+    <span class="who" id="whoami"></span>
+    <button class="btn sm" id="logout" type="button">Chiqish</button>
+  </div>
+</header>
+<main>
+  <div class="stats" id="stats" style="margin-bottom:22px"></div>
+  <div class="head"><h2>🎓 Kurs adminlari <span class="count" id="cnt"></span></h2><div class="spacer"></div>
+    <button class="btn pri" id="add" type="button">+ Kurs admin qo'shish</button></div>
+  <div class="card tw"><table class="rt">
+    <thead><tr><th>FI</th><th>Telefon</th><th>Telegram ID</th><th>Holat</th><th>Oxirgi kirish</th><th></th></tr></thead>
+    <tbody id="rows"></tbody></table><div class="empty hidden" id="empty">Hali kurs adminlari yo'q</div></div>
+  <p class="muted" style="font-size:13px;margin-top:12px">Kurs admin Telegram ID'sini bilish uchun u botga <b>/start</b> yozsin — bot ID'ni o'zi ko'rsatadi.</p>
+</main>
+<script src="js/common.js"></script>
+<script src="js/superadmin.js"></script>
+</body></html>

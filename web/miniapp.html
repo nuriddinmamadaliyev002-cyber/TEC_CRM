@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tizimga kirish — InnovateIT Courses</title>
+<link rel="icon" href="img/logo.png">
+<link rel="stylesheet" href="css/app.css">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+<div class="login-wrap"><div class="card login">
+  <div class="brand"><img src="img/logo.png" alt="">InnovateIT Courses</div>
+  <p class="sub">Online kurslar boshqaruvi</p>
+
+  <!-- Yuklanmoqda -->
+  <div id="v-load" class="wait">
+    <div class="spin" aria-hidden="true"></div>
+    <b>Tekshirilmoqda…</b>
+  </div>
+
+  <!-- Bir nechta rol: tanlash -->
+  <div id="v-roles" class="hidden">
+    <p class="muted" style="margin:0 0 12px;text-align:center">Qaysi panelga kirasiz?</p>
+    <div id="roles"></div>
+  </div>
+
+  <!-- Telegram ID biriktirilmagan -->
+  <div id="v-none" class="hidden" style="text-align:center">
+    <b>Sizning Telegram ID'ingiz tizimga biriktirilmagan</b>
+    <p class="muted" style="margin:8px 0 12px">Iltimos, maktab adminingizga quyidagi ID'ni yuboring:</p>
+    <p style="font-size:22px;margin:0 0 6px"><code id="tgid"></code></p>
+    <button class="btn" id="copy" type="button">📋 Nusxalash</button>
+  </div>
+
+  <!-- Panel brauzerda ochiladi -->
+  <div id="v-open" class="hidden" style="text-align:center">
+    <b>Panel brauzerda ochilmoqda…</b>
+    <p class="muted" style="margin:8px 0 12px">Ochilmasa, quyidagi tugmani bosing. Havola 5 daqiqa amal qiladi.</p>
+    <button class="btn pri" id="open" type="button">Panelni ochish</button>
+  </div>
+
+  <!-- Xatolik -->
+  <div id="v-err" class="hidden" style="text-align:center">
+    <div class="err" id="err-msg" role="alert" style="margin-bottom:12px"></div>
+    <button class="btn pri" id="retry" type="button">Qayta urinish</button>
+      </div>
+</div></div>
+<script src="js/common.js"></script>
+<script src="js/miniapp.js"></script>
+</body></html>

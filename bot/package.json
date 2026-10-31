@@ -1,0 +1,11 @@
+{
+  "name": "innovateit-courses-bot",
+  "version": "1.0.0",
+  "description": "InnovateIT Courses — kurs adminlari uchun kirish boti",
+  "main": "bot.js",
+  "scripts": { "start": "node bot.js" },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "node-telegram-bot-api": "^0.66.0"
+  }
+}

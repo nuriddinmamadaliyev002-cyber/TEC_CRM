@@ -69,7 +69,7 @@ async function sendLoginPrompt(chatId, userId) {
   }
   return bot.sendMessage(chatId,
     "Assalomu alaykum! 👋\n\nSizning Telegram ID'ingiz hali tizimga biriktirilmagan.\n" +
-    "Iltimos, maktab adminingiz bilan bog'laning va ushbu Telegram ID'ingizni unga yuboring:\n\n" +
+    "Iltimos, o'quv markaz adminingiz bilan bog'laning va ushbu Telegram ID'ingizni unga yuboring:\n\n" +
     `🆔 ${userId}`);
 }
 

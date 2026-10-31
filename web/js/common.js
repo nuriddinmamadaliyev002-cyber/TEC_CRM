@@ -20,8 +20,9 @@
   // Telegram Mini App ichida ochilganmi (telegram-web-app.js yuklangan va imzolangan initData bor)
   const tgApp = () => { const t = window.Telegram && window.Telegram.WebApp; return t && t.initData ? t : null; };
   // «Chiqish»: Mini App ichida oynani yopadi (kirish sahifasi ko'rsatilmaydi); oddiy brauzerda superadmin kirish sahifasiga qaytaradi.
-  // Superadmin kirish formasiga qaytadi; kurs admin / o'qituvchi / o'quvchi esa «botdan qayta kiring» sahifasiga (#chiqdi)
-  const loginPage = role => (role === 'superadmin' ? 'index.html' : 'index.html#chiqdi');
+  // Superadmin kirish formasiga qaytadi; kurs admin / o'qituvchi / o'quvchi esa hech qanday yozuvsiz to'g'ridan-to'g'ri botga (t.me)
+  const BOT_URL = 'https://t.me/TodayEducation_bot';
+  const loginPage = role => (role === 'superadmin' ? 'index.html' : BOT_URL);
   function logout() {
     const role = session.role();
     session.clear();

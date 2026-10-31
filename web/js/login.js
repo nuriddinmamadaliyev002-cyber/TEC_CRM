@@ -7,20 +7,13 @@
   const m = location.hash.match(/^#bt=([A-Za-z0-9_-]{20,64})$/);
   if (m) {
     try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {} // token manzilda qolmasin
-    $('v-super').classList.add('hidden'); $('bt-wait').classList.remove('hidden');
+    // Kirish jarayonida hech qanday oyna/yozuv ko'rinmasin: karta yashirin, faqat xato bo'lsa ko'rsatiladi
+    const card = document.querySelector('.login'); card.classList.add('hidden');
+    $('v-super').classList.add('hidden');
     IC.api('GET', '/auth/telegram/poll/' + m[1]).then(d => {
       if (d.holat === 'approved' && d.token) { IC.session.save(d.token, d.role, d.ism); location.replace(dest(d.role)); }
       else throw new Error('Havola eskirgan yoki ishlatilgan. Telegram botdagi «Tizimga kirish» tugmasini qayta bosing.');
-    }).catch(x => { $('bt-wait').classList.add('hidden'); $('bt-err').textContent = x.message; $('bt-fail').classList.remove('hidden'); });
-    return;
-  }
-
-  // Kurs admin / o'qituvchi / o'quvchi chiqqach (yoki sessiyasi tugagach): superadmin formasi emas, botga yo'naltiruvchi sahifa
-  if (location.hash === '#chiqdi') {
-    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
-    IC.session.clear();
-    $('v-super').classList.add('hidden'); document.querySelector('.sub').textContent = 'Online kurslar boshqaruvi';
-    $('v-out').classList.remove('hidden');
+    }).catch(x => { document.querySelector('.sub').textContent = 'Online kurslar boshqaruvi'; $('bt-err').textContent = x.message; $('bt-fail').classList.remove('hidden'); card.classList.remove('hidden'); });
     return;
   }
 
@@ -35,7 +28,7 @@
       eskirgan: "Havola eskirgan. Botdagi «Tizimga kirish» tugmasini qayta bosing.",
       server: "Server xatoligi. Birozdan so'ng qayta urinib ko'ring.",
     };
-    $('v-super').classList.add('hidden'); $('bt-wait').classList.add('hidden');
+    $('v-super').classList.add('hidden'); document.querySelector('.sub').textContent = 'Online kurslar boshqaruvi';
     $('bt-err').textContent = MSG[em[1]] || 'Kirishda xatolik. Botdagi tugmani qayta bosing.';
     $('bt-fail').classList.remove('hidden');
     return;

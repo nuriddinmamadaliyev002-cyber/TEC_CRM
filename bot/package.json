@@ -1,7 +1,7 @@
 {
-  "name": "innovateit-courses-bot",
+  "name": "today-education-bot",
   "version": "1.0.0",
-  "description": "InnovateIT Courses — kurs adminlari uchun kirish boti",
+  "description": "Today Education Centre — kurs adminlari uchun kirish boti",
   "main": "bot.js",
   "scripts": { "start": "node bot.js" },
   "dependencies": {

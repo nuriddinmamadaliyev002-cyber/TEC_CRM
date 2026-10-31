@@ -1,4 +1,4 @@
--- InnovateIT Courses — to'liq sxema (qayta ishga tushirish xavfsiz)
+-- Today Education Centre — to'liq sxema (qayta ishga tushirish xavfsiz)
 
 -- ═══ Migratsiya: «kurslar» → «fanlar» (eski bazalar uchun; yangi bazada hech narsa qilmaydi) ═══
 DO $$

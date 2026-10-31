@@ -4,8 +4,8 @@ require('dotenv').config();
 const pool = new Pool({
   host:     process.env.DB_HOST     || 'localhost',
   port:     parseInt(process.env.DB_PORT) || 5432,
-  database: process.env.DB_NAME     || 'iis_courses',
-  user:     process.env.DB_USER     || 'iis_courses_user',
+  database: process.env.DB_NAME     || 'today_edu',
+  user:     process.env.DB_USER     || 'today_edu_user',
   password: process.env.DB_PASSWORD || '',
   max: 10,
   idleTimeoutMillis: 30000,

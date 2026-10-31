@@ -1,7 +1,7 @@
 {
-  "name": "innovateit-courses-backend",
+  "name": "today-education-backend",
   "version": "1.0.0",
-  "description": "InnovateIT Courses — online kurslar boshqaruvi (backend)",
+  "description": "Today Education Centre — o'quv markaz boshqaruvi (backend)",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

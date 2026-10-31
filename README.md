@@ -1,4 +1,4 @@
-# InnovateIT Courses
+# Today Education Centre
 
 Online kurslar boshqaruvi — **CRM'dan mustaqil** project (alohida baza, alohida jarayon).
 
@@ -58,8 +58,8 @@ tugma har bosgan odamning O'Z imzolangan Telegram ID'sini tekshiradi.
 ## Ishga tushirish (lokal)
 ```bash
 # 1) Baza
-sudo -u postgres psql -c "CREATE USER iis_courses_user WITH PASSWORD 'KUCHLI_PAROL'" \
-                      -c "CREATE DATABASE iis_courses OWNER iis_courses_user"
+sudo -u postgres psql -c "CREATE USER today_edu_user WITH PASSWORD 'KUCHLI_PAROL'" \
+                      -c "CREATE DATABASE today_edu OWNER today_edu_user"
 
 # 2) Backend
 cd backend && npm install && cp .env.example .env

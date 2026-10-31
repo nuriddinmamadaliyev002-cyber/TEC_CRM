@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════════════════
-//  InnovateIT Courses — kirish boti
+//  Today Education Centre — kirish boti
 //  Oqim: web "Telegram orqali kirish" → t.me/Bot?start=login_<token>
 //        → bot /start'ni oladi (Telegram ID soxtalashtirib bo'lmaydi)
 //        → backendga bot-check → "✅ Tasdiqlayman" tugmasi → bot-confirm

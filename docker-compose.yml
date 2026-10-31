@@ -1,4 +1,4 @@
-# InnovateIT Courses — lokal/Docker ishga tushirish
+# Today Education Centre — lokal/Docker ishga tushirish
 #   1) cp .env.docker.example .env      (ildizdagi .env: faqat DB_PASSWORD)
 #   2) backend/.env va bot/.env ni to'ldiring (.env.example'lardan)
 #   3) docker compose up -d --build
@@ -9,15 +9,15 @@
 services:
   db:
     image: postgres:16-alpine
-    container_name: innovateit_db
+    container_name: today_edu_db
     environment:
-      POSTGRES_DB: iis_courses
-      POSTGRES_USER: iis_courses_user
+      POSTGRES_DB: today_edu
+      POSTGRES_USER: today_edu_user
       POSTGRES_PASSWORD: ${DB_PASSWORD:?ildizdagi .env faylida DB_PASSWORD ni yozing}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U iis_courses_user -d iis_courses"]
+      test: ["CMD-SHELL", "pg_isready -U today_edu_user -d today_edu"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -27,7 +27,7 @@ services:
     build:
       context: .                      # web/ papkasi ham image ichiga kirishi uchun ildiz
       dockerfile: backend/Dockerfile
-    container_name: innovateit_backend
+    container_name: today_edu_backend
     env_file:
       - ./backend/.env
     environment:
@@ -35,8 +35,8 @@ services:
       HOST: 0.0.0.0                   # konteynerda 127.0.0.1 tashqaridan ko'rinmaydi
       DB_HOST: db
       DB_PORT: "5432"
-      DB_NAME: iis_courses
-      DB_USER: iis_courses_user
+      DB_NAME: today_edu
+      DB_USER: today_edu_user
       DB_PASSWORD: ${DB_PASSWORD}
     depends_on:
       db:
@@ -54,7 +54,7 @@ services:
 
   bot:
     build: ./bot
-    container_name: innovateit_bot
+    container_name: today_edu_bot
     env_file:
       - ./bot/.env
     environment:

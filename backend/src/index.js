@@ -42,7 +42,7 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, HOST, async () => {
-  console.log(`✅ InnovateIT Courses API: http://${HOST}:${PORT}`);
+  console.log(`✅ Today Education Centre API: http://${HOST}:${PORT}`);
   try { await pool.query('SELECT NOW()'); console.log('✅ PostgreSQL OK'); }
   catch (e) { console.error('❌ PostgreSQL xatolik:', e.message); }
 });

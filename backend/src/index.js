@@ -31,7 +31,10 @@ app.use('/api/oquvchi-panel',    require('./routes/oquvchiPanel'));
 app.use('/api',              require('./routes/panel'));
 
 // Web panel (nginx bo'lmasa ham ishlashi uchun)
-app.use(express.static(process.env.WEB_DIR || path.join(__dirname, '../../web')));
+// HTML/JS/CSS: har safar yangilanganini tekshirsin (ETag → o'zgarmagan bo'lsa 304). Aks holda Cloudflare/brauzer eski fayllarni soatlab ushlab turadi.
+app.use(express.static(process.env.WEB_DIR || path.join(__dirname, '../../web'), {
+  setHeaders: (res, file) => { if (/\.(html|js|css)$/i.test(file)) res.setHeader('Cache-Control', 'no-cache'); },
+}));
 
 app.use('/api', (req, res) => res.status(404).json({ ok: false, error: `Topilmadi: ${req.method} ${req.path}` }));
 app.use((err, req, res, next) => {

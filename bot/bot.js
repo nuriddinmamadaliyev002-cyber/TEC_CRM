@@ -29,9 +29,10 @@ async function api(path, body) {
 // Web panel manzili (https). Telegram http:// havolali tugmalarni qabul qilmaydi — Mini App tugmasi faqat https bo'lsa ishlaydi.
 const WEB_URL = String(process.env.WEB_URL || '').trim().replace(/\/+$/, '');
 
+// ?v=… bot har ishga tushganda (deploy) yangilanadi: Cloudflare eski miniapp.html'ni keshdan bermasin.
 // «Tizimga kirish» tugmasi → web/miniapp.html (imzolangan initData tekshiriladi) va foydalanuvchi to'g'ridan-to'g'ri
 // o'z paneliga (Mini App oynasining o'zida) o'tadi. Tugma faqat https bo'lsa ishlaydi.
-const MINIAPP_URL = /^https:\/\//i.test(WEB_URL) ? WEB_URL + '/miniapp.html' : null;
+const MINIAPP_URL = /^https:\/\//i.test(WEB_URL) ? WEB_URL + '/miniapp.html?v=' + Date.now().toString(36) : null;
 const miniAppRow = MINIAPP_URL ? [[{ text: '🔐 Tizimga kirish', web_app: { url: MINIAPP_URL } }]] : [];
 
 // Chatdagi menyu tugmasi ham xuddi shu kirishni ochsin (xato bo'lsa bot to'xtamaydi)

@@ -34,7 +34,7 @@
     const t = session.token(); if (t) h.Authorization = 'Bearer ' + t;
     let r, d;
     try {
-      r = await fetch('/api' + path, { method, headers: h, body: body ? JSON.stringify(body) : undefined });
+      r = await fetch('/api' + path, { method, headers: h, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(15000) });
       d = await r.json();
     } catch (_) { throw new Error("Server bilan aloqa yo'q"); }
     if (r.status === 401 && d.expired && t) { relogin(); throw new Error('Sessiya tugadi'); }

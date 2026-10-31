@@ -26,6 +26,8 @@
         return show('v-roles');
       }
       IC.session.save(d.token, d.role, d.ism);
+      // Sessiya saqlanmasa (brauzer xotirasi yopiq), panel yana shu sahifaga qaytaradi — cheksiz aylana bo'lmasin
+      if (IC.session.token() !== d.token) return fail("Sessiyani saqlab bo'lmadi (brauzer xotirasi yopiq). Telegram'ni yangilab, qayta urinib ko'ring.");
       location.replace(dest(d.role));
     } catch (x) { fail(x.message); }
   }
@@ -37,6 +39,13 @@
     catch (_) { IC.toast("Nusxalab bo'lmadi — ID'ni qo'lda belgilab oling", true); }
   };
 
-  if (!initData) fail("Bu sahifa Telegram ichida ochilishi kerak. Botdagi «Tizimga kirish» tugmasini bosing.");
+  // Aylanani aniqlash: 20 soniyada 4 martadan ko'p ochilsa — to'xtatib, sababni ko'rsatamiz
+  let loop = false;
+  try {
+    const now = Date.now(), L = JSON.parse(sessionStorage.getItem('ic_mini') || '[]').filter(t => now - t < 20000);
+    L.push(now); sessionStorage.setItem('ic_mini', JSON.stringify(L)); loop = L.length > 4;
+  } catch (_) {}
+  if (loop) { try { sessionStorage.removeItem('ic_mini'); } catch (_) {} IC.session.clear(); fail("Panel qayta-qayta kirish sahifasiga qaytaryapti. Server logini tekshiring yoki «Qayta urinish»ni bosing."); }
+  else if (!initData) fail("Bu sahifa Telegram ichida ochilishi kerak. Botdagi «Tizimga kirish» tugmasini bosing.");
   else login();
 })();

@@ -19,19 +19,25 @@
   };
   // Telegram Mini App ichida ochilganmi (telegram-web-app.js yuklangan va imzolangan initData bor)
   const tgApp = () => { const t = window.Telegram && window.Telegram.WebApp; return t && t.initData ? t : null; };
-  // «Chiqish»: Mini App ichida oynani yopadi (kirish sahifasi ko'rsatilmaydi); oddiy brauzerda superadmin kirish sahifasiga qaytaradi.
-  // Superadmin kirish formasiga qaytadi; kurs admin / o'qituvchi / o'quvchi esa hech qanday yozuvsiz to'g'ridan-to'g'ri botga (t.me)
+  // «Chiqish»: Mini App ichida oynani yopadi (kirish sahifasi ko'rsatilmaydi).
+  // Superadmin kirish formasiga qaytadi. Kurs admin / o'qituvchi / o'quvchi: web tab to'liq YOPILADI.
+  // (Brauzer faqat tarixida bitta sahifa bo'lgan tabni skript bilan yopishga ruxsat beradi — Telegram ochgan tab shunday.
+  //  Yopilmasa, zaxira: 300 ms dan so'ng botga o'tadi.)
   const BOT_URL = 'https://t.me/TodayEducation_bot';
-  const loginPage = role => (role === 'superadmin' ? 'index.html' : BOT_URL);
+  function leave(role) {
+    if (role === 'superadmin') { location.href = 'index.html'; return; }
+    try { window.close(); } catch (_) {}
+    setTimeout(() => location.replace(BOT_URL), 300);
+  }
   function logout() {
     const role = session.role();
     session.clear();
     const t = tgApp();
     if (t && typeof t.close === 'function') { try { t.close(); return; } catch (_) {} }
-    location.href = loginPage(role);
+    leave(role);
   }
-  // Sessiya muddati tugadi / yaroqsiz: Mini App ichida jimgina qayta kiradi (miniapp.html), brauzerda kirish sahifasiga
-  function relogin() { const role = session.role(); session.clear(); location.replace(tgApp() ? 'miniapp.html' : loginPage(role)); }
+  // Sessiya muddati tugadi / yaroqsiz: Mini App ichida jimgina qayta kiradi (miniapp.html), brauzerda tab yopiladi (superadmin — kirish sahifasi)
+  function relogin() { const role = session.role(); session.clear(); if (tgApp()) location.replace('miniapp.html'); else leave(role); }
 
   async function api(method, path, body) {
     const h = { 'Content-Type': 'application/json' };

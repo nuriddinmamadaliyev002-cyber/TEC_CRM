@@ -15,6 +15,15 @@
     return;
   }
 
+  // Kurs admin / o'qituvchi / o'quvchi chiqqach (yoki sessiyasi tugagach): superadmin formasi emas, botga yo'naltiruvchi sahifa
+  if (location.hash === '#chiqdi') {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
+    IC.session.clear();
+    $('v-super').classList.add('hidden'); document.querySelector('.sub').textContent = 'Online kurslar boshqaruvi';
+    $('v-out').classList.remove('hidden');
+    return;
+  }
+
   // Botdagi tugmadan kelgan xato: index.html#xato=<sabab>[&tg=<id>]
   const em = location.hash.match(/^#xato=([a-z]+)(?:&tg=(\d{1,15}))?$/);
   if (em) {

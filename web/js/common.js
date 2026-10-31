@@ -20,14 +20,17 @@
   // Telegram Mini App ichida ochilganmi (telegram-web-app.js yuklangan va imzolangan initData bor)
   const tgApp = () => { const t = window.Telegram && window.Telegram.WebApp; return t && t.initData ? t : null; };
   // «Chiqish»: Mini App ichida oynani yopadi (kirish sahifasi ko'rsatilmaydi); oddiy brauzerda superadmin kirish sahifasiga qaytaradi.
+  // Superadmin kirish formasiga qaytadi; kurs admin / o'qituvchi / o'quvchi esa «botdan qayta kiring» sahifasiga (#chiqdi)
+  const loginPage = role => (role === 'superadmin' ? 'index.html' : 'index.html#chiqdi');
   function logout() {
+    const role = session.role();
     session.clear();
     const t = tgApp();
     if (t && typeof t.close === 'function') { try { t.close(); return; } catch (_) {} }
-    location.href = 'index.html';
+    location.href = loginPage(role);
   }
   // Sessiya muddati tugadi / yaroqsiz: Mini App ichida jimgina qayta kiradi (miniapp.html), brauzerda kirish sahifasiga
-  function relogin() { session.clear(); location.replace(tgApp() ? 'miniapp.html' : 'index.html'); }
+  function relogin() { const role = session.role(); session.clear(); location.replace(tgApp() ? 'miniapp.html' : loginPage(role)); }
 
   async function api(method, path, body) {
     const h = { 'Content-Type': 'application/json' };

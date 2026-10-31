@@ -35,11 +35,19 @@ const WEB_URL = String(process.env.WEB_URL || '').trim().replace(/\/+$/, '');
 const MINIAPP_URL = /^https:\/\//i.test(WEB_URL) ? WEB_URL + '/miniapp.html?v=' + Date.now().toString(36) : null;
 const miniAppRow = MINIAPP_URL ? [[{ text: '🔐 Tizimga kirish', web_app: { url: MINIAPP_URL } }]] : [];
 
-// Chatdagi menyu tugmasi ham xuddi shu kirishni ochsin (xato bo'lsa bot to'xtamaydi)
-if (MINIAPP_URL) {
-  bot.setChatMenuButton({ menu_button: JSON.stringify({ type: 'web_app', text: 'Tizimga kirish', web_app: { url: MINIAPP_URL } }) })
-    .catch(e => console.error('setChatMenuButton xato:', e.message));
-}
+// «Tizimga kirish» tugmalari — login_url: Telegram foydalanuvchini BRAUZERDA to'g'ridan-to'g'ri web panelga o'tkazadi
+// (Mini App ochilmaydi, desktopda ham to'liq oynada ishlaydi). Birinchi marta Telegram bitta tasdiq so'raydi, keyin so'ramaydi.
+// Talab: @BotFather → /setdomain → shu bot → WEB_URL domeni (masalan tec.innovateitschool.uz).
+const WEB_LOGIN = /^https:\/\//i.test(WEB_URL) ? WEB_URL + '/api/auth/telegram/web-login' : null;
+const ROL_NOM = { kurs_admin: '🛠 Kurs admin paneli', oqituvchi: "🧑‍🏫 O'qituvchi paneli", oquvchi: "🎓 O'quvchi paneli" };
+const loginRows = roles => (WEB_LOGIN ? roles.map(r => [{
+  text: '🔐 ' + (roles.length > 1 ? (ROL_NOM[r.rol] || r.rol) : 'Tizimga kirish'),
+  login_url: { url: `${WEB_LOGIN}?rol=${encodeURIComponent(r.rol)}` },
+}]) : []);
+
+// Chatdagi menyu tugmasi: oddiy (Mini App emas) — eski web_app menyusi bo'lsa, olib tashlanadi
+bot.setChatMenuButton({ menu_button: JSON.stringify({ type: 'default' }) })
+  .catch(e => console.error('setChatMenuButton xato:', e.message));
 
 const TOKEN_RE = /^[A-Za-z0-9_-]{20,64}$/;
 
@@ -61,10 +69,10 @@ async function sendLoginPrompt(chatId, userId) {
     return bot.sendMessage(chatId, "⚠️ Server bilan aloqa yo'q. Birozdan so'ng qayta urinib ko'ring.");
   }
   if (r.roles && r.roles.length) {
-    if (!MINIAPP_URL) return bot.sendMessage(chatId, "⚠️ Kirish tugmasi hozircha sozlanmagan (bot/.env da WEB_URL https:// bilan bo'lishi kerak).");
+    if (!WEB_LOGIN) return bot.sendMessage(chatId, "⚠️ Kirish tugmasi hozircha sozlanmagan (bot/.env da WEB_URL https:// bilan bo'lishi kerak).");
     const sent = await bot.sendMessage(chatId,
       `Salom, ${r.roles[0].ism}! 👋\n\nTizimga kirish uchun quyidagi tugmani bosing. Kirish faqat sizning Telegram hisobingiz uchun ishlaydi.`,
-      { reply_markup: { inline_keyboard: miniAppRow } });
+      { reply_markup: { inline_keyboard: loginRows(r.roles) } });
     bot.pinChatMessage(chatId, sent.message_id, { disable_notification: true }).catch(() => {});
     return sent;
   }

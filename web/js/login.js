@@ -15,6 +15,23 @@
     return;
   }
 
+  // Botdagi tugmadan kelgan xato: index.html#xato=<sabab>[&tg=<id>]
+  const em = location.hash.match(/^#xato=([a-z]+)(?:&tg=(\d{1,15}))?$/);
+  if (em) {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
+    const MSG = {
+      id: "Sizning Telegram ID'ingiz" + (em[2] ? ' (' + em[2] + ')' : '') + " tizimga biriktirilmagan. Iltimos, o'quv markaz adminingizga shu ID'ni yuboring.",
+      rol: "Bu rol uchun ruxsat yo'q. Botdagi tugmani qayta bosing.",
+      imzo: "Telegram ma'lumoti tasdiqlanmadi. Botdagi «Tizimga kirish» tugmasini qayta bosing.",
+      eskirgan: "Havola eskirgan. Botdagi «Tizimga kirish» tugmasini qayta bosing.",
+      server: "Server xatoligi. Birozdan so'ng qayta urinib ko'ring.",
+    };
+    $('v-super').classList.add('hidden'); $('bt-wait').classList.add('hidden');
+    $('bt-err').textContent = MSG[em[1]] || 'Kirishda xatolik. Botdagi tugmani qayta bosing.';
+    $('bt-fail').classList.remove('hidden');
+    return;
+  }
+
   // Allaqachon kirgan bo'lsa — o'z sahifasiga
   if (IC.session.token() && IC.session.role()) { location.replace(dest(IC.session.role())); return; }
 

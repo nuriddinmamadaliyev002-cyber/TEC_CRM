@@ -5,6 +5,7 @@
 //  POST /api/auth/telegram/bot-check  — BOT: token + telegramId → ruxsat bormi?
 //  POST /api/auth/telegram/bot-confirm— BOT: foydalanuvchi "Tasdiqlayman" bosdi
 //  POST /api/auth/telegram/miniapp    — Telegram Mini App: imzolangan initData → JWT (yoki rol tanlash)
+//  GET  /api/auth/telegram/web-login  — botdagi login_url tugmasi: Telegram imzosi → brauzerda to'g'ridan-to'g'ri panelga
 //  POST /api/auth/telegram/miniapp-handoff — Mini App: imzolangan initData → bir martalik havola (tashqi brauzerda ochiladi)
 //  GET  /api/auth/me                  — joriy foydalanuvchi
 //
@@ -15,7 +16,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const pool = require('../db');
 const { generateToken, requireAuth } = require('../middleware/jwt');
-const { verifyInitData } = require('../telegramWebApp');
+const { verifyInitData, verifyLoginUrl } = require('../telegramWebApp');
 const { bad } = require('../util');
 
 const router = Router();
@@ -242,6 +243,38 @@ router.post('/telegram/miniapp-handoff', limiter(30, 10 * 60 * 1000), async (req
       [token, ch.rol, ch.id, tg]);
     res.json({ ok: true, found: true, role: ch.rol, ism: ch.ism, url: `${web}/index.html#bt=${token}`, expiresIn: 300 });
   } catch (e) { console.error('miniapp-handoff:', e.message); res.status(500).json({ ok: false, error: 'Server xatoligi' }); }
+});
+
+// Botdagi «login_url» tugmasi → BRAUZERDA to'g'ridan-to'g'ri web panel (Mini App ochilmaydi).
+// Telegram tugma bosilganda foydalanuvchini shu manzilga qaytaradi va imzolangan id/auth_date/hash qo'shadi (kalit — bot tokeni),
+// shuning uchun Telegram ID soxtalashtirib bo'lmaydi va xabar boshqaga yuborilsa ham u O'Z ID'si bilan tekshiriladi.
+// `rol` imzoga kirmaydi, lekin faqat foydalanuvchining O'Z faol rollaridan birini tanlaydi. Natija: bir martalik token →
+// index.html#bt=… (u JWT'ga almashtirib, panelga o'tkazadi). Xato bo'lsa index.html#xato=… (sababi ko'rsatiladi).
+router.get('/telegram/web-login', limiter(60, 10 * 60 * 1000), async (req, res) => {
+  const web = String(process.env.WEB_URL || '').trim().replace(/\/+$/, '');
+  if (!/^https:\/\//i.test(web)) return res.status(500).json({ ok: false, error: 'WEB_URL sozlanmagan (https:// bilan boshlanishi kerak)' });
+  res.setHeader('Cache-Control', 'no-store');
+  const back = (k, extra = '') => res.redirect(302, `${web}/index.html#xato=${k}${extra}`);
+  try {
+    const v = verifyLoginUrl(req.query, process.env.KURS_BOT_TOKEN);
+    if (!v.ok) return back(v.sabab === 'eskirgan' ? 'eskirgan' : 'imzo');
+    const tg = v.id, want = typeof req.query.rol === 'string' ? rolOf(req.query.rol) : null;
+    const roles = [];
+    for (const [rol, R] of Object.entries(ROLLAR)) {
+      const a = await pool.query(`SELECT id, faol FROM ${R.tbl} WHERE telegram_id=$1`, [tg]);
+      if (a.rowCount !== 1 || !a.rows[0].faol) continue; // bir nechta mos kelsa — noaniq, ruxsat yo'q
+      roles.push({ rol, id: a.rows[0].id });
+    }
+    if (!roles.length) return back('id', `&tg=${tg}`);
+    const ch = want ? roles.find(r => r.rol === want) : roles.length === 1 ? roles[0] : null;
+    if (!ch) return back('rol');
+    await pool.query("DELETE FROM login_tokenlar WHERE muddat < NOW() OR (telegram_id=$1 AND holat='approved')", [tg]);
+    const token = crypto.randomBytes(24).toString('base64url');
+    await pool.query(
+      `INSERT INTO login_tokenlar(token, holat, rol, ${ROLLAR[ch.rol].col}, telegram_id) VALUES($1,'approved',$2,$3,$4)`,
+      [token, ch.rol, ch.id, tg]);
+    res.redirect(302, `${web}/index.html#bt=${token}`);
+  } catch (e) { console.error('web-login:', e.message); back('server'); }
 });
 
 // BOT: "✅ Tasdiqlayman" yoki "❌ Bekor qilish"

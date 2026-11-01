@@ -123,6 +123,26 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
   r = await call('POST', '/tolovlar', { oquvchi_id: ids[0], guruh_id: GID, summa: 600000, usul: 'karta', sana: YDAY }, KA); t('to\'lov kiritish', r.s === 200, r);
   r = await call('GET', '/tolovlar', null, KA); t('to\'lovlar ro\'yxati', r.d.items && r.d.items[0].summa === 600000 && r.d.items[0].kiritgan === 'Valiyev Ali', r);
   r = await call('GET', '/stats', null, KA); t('statistika', r.d.stats.jami_tushum >= 600000 && r.d.stats.oquvchilar >= 3, r);
+
+  // — O'QUVCHILAR: manzil, guruh/o'qituvchi ma'lumoti, faol ↔ nofaol (sabab majburiy), davomatga ta'siri
+  r = await call('PUT', `/oquvchilar/${ids[1]}`, { ism: 'B', telefon: '90', manzil: 'Chilonzor 5' }, KA); t('o\'quvchi manzili saqlanadi', r.s === 200, r);
+  { const x = (await call('GET', '/oquvchilar', null, KA)).d.items.find(o => o.id === ids[1]);
+    t('ro\'yxatda manzil, guruh, o\'qituvchi va qo\'shilgan sana', x && x.manzil === 'Chilonzor 5' && x.guruhlar.length === 1 && x.guruhlar[0].guruh_id === GID
+      && x.guruhlar[0].oqituvchi_id === TID && /^\d{4}-\d\d-\d\d$/.test(x.guruhlar[0].boshlagan), x);
+    t('yangi o\'quvchi faol', x && x.faol === true && !x.nofaol_sana && x.nofaol_sabab === '', x); }
+  r = await call('POST', `/oquvchilar/${ids[1]}/nofaol`, {}, KA); t('sababsiz nofaol qilib bo\'lmaydi → 400', r.s === 400, r);
+  r = await call('POST', `/oquvchilar/${ids[1]}/nofaol`, { sabab: ' a ' }, KA); t('juda qisqa sabab → 400', r.s === 400, r);
+  r = await call('POST', `/oquvchilar/${ids[1]}/nofaol`, { sabab: 'Ko\'chib ketdi' }, KA); t('sabab bilan nofaol qilish', r.s === 200, r);
+  r = await call('POST', `/oquvchilar/${ids[1]}/nofaol`, { sabab: 'yana' }, KA); t('allaqachon nofaol → 409', r.s === 409, r);
+  { const x = (await call('GET', '/oquvchilar', null, KA)).d.items.find(o => o.id === ids[1]);
+    t('nofaol: sabab, sana va guruh tarixi saqlanadi', x && x.faol === false && x.nofaol_sabab === 'Ko\'chib ketdi' && /^\d{4}-\d\d-\d\d$/.test(x.nofaol_sana) && x.guruhlar.length === 1, x); }
+  r = await call('GET', `/guruhlar/${GID}/davomat`, null, KA); t('davomat: nofaol o\'quvchi bugun chiqmaydi', r.s === 200 && !r.d.items.some(o => o.id === ids[1]), r);
+  r = await call('GET', `/guruhlar/${GID}/davomat?sana=${YDAY}`, null, KA); t('davomat: nofaol qilinishidan oldingi sanada chiqadi', r.s === 200 && r.d.items.some(o => o.id === ids[1]), r);
+  r = await call('POST', `/oquvchilar/${ids[1]}/faol`, {}, KA); t('nofaoldan faolga qaytarish', r.s === 200, r);
+  r = await call('POST', `/oquvchilar/${ids[1]}/faol`, {}, KA); t('allaqachon faol → 409', r.s === 409, r);
+  { const x = (await call('GET', '/oquvchilar', null, KA)).d.items.find(o => o.id === ids[1]);
+    t('faolga qaytganda sana va sabab tozalanadi', x && x.faol === true && !x.nofaol_sana && x.nofaol_sabab === '', x); }
+  r = await call('POST', `/oquvchilar/99999999/nofaol`, { sabab: 'sabab bor' }, KA); t('mavjud bo\'lmagan o\'quvchi → 404', r.s === 404, r);
   r = await call('GET', '/guruhlar/abc/oquvchilar', null, KA); t('noto\'g\'ri id → 400/404 (500 emas)', r.s === 400 || r.s === 404, r);
   r = await call('GET', '/guruhlar', null, KA); t('guruhlar: sanoq to\'g\'ri', r.d.guruhlar.find(g => g.id === GID).oquvchilar_soni === 2, r);
 
@@ -144,7 +164,7 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
 
   // — O'qituvchi/o'quvchi formalarida Telegram ID yo'q
   r = await call('POST', '/oquvchilar', { ism: 'TG', telegram_id: '123456' }, KA); t('o\'quvchi: telegram_id e\'tiborga olinmaydi', r.s === 200, r);
-  { const x = (await call('GET', '/oquvchilar', null, KA)).d.items.find(o => o.id === r.d.id); t('telegram_id saqlanmadi', x && x.telegram_id === null, x); ids.push(r.d.id); }
+  { const x = (await call('GET', '/oquvchilar', null, KA)).d.items.find(o => o.id === r.d.id); t('telegram_id saqlanmadi', x && x.telegram_id == null, x); ids.push(r.d.id); } // ro'yxat telegram_id'ni umuman qaytarmaydi
 
   // — BOT API
   r = await call('GET', `/bot/kurslar?filial_id=${F1}`); t('bot API sirsiz → 403', r.s === 403, r);

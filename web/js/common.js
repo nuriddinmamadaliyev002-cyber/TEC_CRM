@@ -191,3 +191,52 @@
 
   window.IC = { api, esc, money, fdate, isoDay, session, filial, logout, relogin, download, toast, formModal, confirmBox, ask, header, requireRole };
 })();
+
+// Matn kiritiladigan har qanday maydonda (qidiruv, forma, jadval ichidagi tahrir) yozish boshlanishi bilan o'ng chekada ✕ chiqadi;
+// bosilsa butun matn o'chadi. Maydonlar dinamik yaratilgani uchun bitta umumiy tugma fokusdagi maydon ustiga qo'yiladi (DOM o'zgarmaydi).
+// Maydonni istisno qilish: data-noclr atributi. Parol va sana maydonlarida chiqmaydi (brauzerning o'z tugmalari bor).
+(function () {
+  const TYPES = new Set(['', 'text', 'search', 'tel', 'email', 'url', 'number']);
+  let btn = null, target = null;
+  const eligible = el => !!el && el.nodeType === 1 && !el.disabled && !el.readOnly && !el.hasAttribute('data-noclr') &&
+    (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && TYPES.has((el.getAttribute('type') || '').toLowerCase())));
+
+  function hide() {
+    if (btn) btn.classList.add('hidden');
+    if (target) target.classList.remove('has-clr');
+  }
+  function place() {
+    if (!btn || !target || !document.contains(target) || document.activeElement !== target || !target.value) return hide();
+    const r = target.getBoundingClientRect();
+    if (!r.width || r.bottom < 0 || r.top > window.innerHeight) return hide();
+    btn.classList.remove('hidden'); target.classList.add('has-clr');
+    const s = btn.offsetWidth, num = (target.getAttribute('type') || '').toLowerCase() === 'number';
+    btn.style.left = Math.round(r.right - s - 6 - (num ? 18 : 0)) + 'px'; // number maydonida brauzer strelkalari bor
+    btn.style.top = Math.round(target.tagName === 'TEXTAREA' ? r.top + 6 : r.top + (r.height - s) / 2) + 'px';
+  }
+  function make() {
+    btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'clr-x hidden'; btn.textContent = '✕'; btn.tabIndex = -1;
+    btn.title = 'Tozalash'; btn.setAttribute('aria-label', 'Matnni tozalash');
+    // mousedown: maydon fokusni yo'qotmasin va jadvaldagi tahrir (document mousedown) yopilib ketmasin
+    btn.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation(); });
+    btn.addEventListener('click', e => {
+      e.preventDefault(); e.stopPropagation();
+      if (!target) return;
+      target.value = '';
+      target.dispatchEvent(new Event('input', { bubbles: true })); // oninput (qidiruv va h.k.) qayta ishlasin
+      target.focus(); place();
+    });
+    document.body.appendChild(btn);
+  }
+  document.addEventListener('focusin', e => {
+    if (!eligible(e.target)) { hide(); target = null; return; }
+    if (!btn) make();
+    if (target && target !== e.target) hide();
+    target = e.target; place();
+  });
+  document.addEventListener('focusout', () => setTimeout(() => { if (document.activeElement !== target) { hide(); } }, 0));
+  document.addEventListener('input', e => { if (e.target === target) place(); });
+  window.addEventListener('scroll', () => { if (target) place(); }, true);
+  window.addEventListener('resize', () => { if (target) place(); });
+})();

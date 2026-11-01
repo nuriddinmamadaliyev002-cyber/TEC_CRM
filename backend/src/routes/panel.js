@@ -106,7 +106,64 @@ function person(table, withFan) {
   return r;
 }
 router.use('/oqituvchilar', person('oqituvchilar', true));
-router.use('/oquvchilar', person('oquvchilar', false));
+
+// ═══ O'QUVCHILAR: faol / nofaol ══════════════════════════════════════════════
+// Ro'yxat har bir o'quvchi uchun guruh(lar)i, o'qituvchisi va guruhga qo'shilgan (o'qishni boshlagan) sanasini ham qaytaradi.
+// Faol ↔ nofaol alohida amallar bilan o'zgaradi: nofaol qilishda sabab MAJBURIY. Nofaol o'quvchi guruh a'zoligi va tarixini saqlaydi.
+const oquvchilar = Router();
+const oquvchiBody = b => {
+  const ism = str(b.ism, 100); if (!ism) return { err: 'Ism majburiy' };
+  return { v: [ism, str(b.familiya, 100), str(b.telefon, 30), str(b.manzil, 300)] };
+};
+oquvchilar.get('/', wrap(async (req, res) => {
+  const q = await pool.query(`
+    SELECT o.id, o.ism, o.familiya, o.telefon, o.manzil, o.faol, o.yaratilgan,
+           to_char(o.nofaol_sana, 'YYYY-MM-DD') AS nofaol_sana, o.nofaol_sabab,
+           COALESCE((SELECT json_agg(json_build_object(
+                       'guruh_id', g.id, 'guruh_nomi', g.nomi, 'fan_nomi', f.nomi,
+                       'oqituvchi_id', g.oqituvchi_id, 'oqituvchi_nomi', NULLIF(TRIM(CONCAT(t.familiya, ' ', t.ism)), ''),
+                       'boshlagan', to_char(x.qoshilgan AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM-DD')) ORDER BY x.qoshilgan)
+                      FROM guruh_oquvchilari x
+                      JOIN guruhlar g ON g.id = x.guruh_id
+                      JOIN fanlar f ON f.id = g.fan_id
+                      LEFT JOIN oqituvchilar t ON t.id = g.oqituvchi_id
+                     WHERE x.oquvchi_id = o.id), '[]'::json) AS guruhlar
+      FROM oquvchilar o WHERE o.filial_id = $1 ORDER BY o.id DESC`, [req.filialId]);
+  res.json({ ok: true, items: q.rows });
+}));
+oquvchilar.post('/', wrap(async (req, res) => { // yangi o'quvchi doim FAOL
+  const { err, v } = oquvchiBody(req.body || {}); if (err) return bad(res, err);
+  const q = await pool.query('INSERT INTO oquvchilar(ism,familiya,telefon,manzil,filial_id) VALUES($1,$2,$3,$4,$5) RETURNING id', [...v, req.filialId]);
+  res.json({ ok: true, id: q.rows[0].id });
+}));
+oquvchilar.put('/:id', wrap(async (req, res) => { // holat (faol/nofaol) bu yerda o'zgarmaydi
+  const { err, v } = oquvchiBody(req.body || {}); if (err) return bad(res, err);
+  const q = await pool.query('UPDATE oquvchilar SET ism=$1,familiya=$2,telefon=$3,manzil=$4 WHERE id=$5 AND filial_id=$6', [...v, int(req.params.id) || 0, req.filialId]);
+  q.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+}));
+oquvchilar.delete('/:id', wrap(async (req, res) => {
+  const q = await pool.query('DELETE FROM oquvchilar WHERE id=$1 AND filial_id=$2', [int(req.params.id) || 0, req.filialId]);
+  q.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+}));
+// Holatni o'zgartirishdan keyin: 0 qator → yo'q (404) yoki allaqachon shu holatda (409)
+const holatNatija = async (q, id, filial, res, text) => {
+  if (q.rowCount) return res.json({ ok: true });
+  const e = await pool.query('SELECT 1 FROM oquvchilar WHERE id=$1 AND filial_id=$2', [id, filial]);
+  return e.rowCount ? bad(res, text, 409) : bad(res, 'Topilmadi', 404);
+};
+oquvchilar.post('/:id/nofaol', wrap(async (req, res) => {
+  const id = int(req.params.id) || 0, sabab = str((req.body || {}).sabab, 500);
+  if (sabab.length < 3) return bad(res, "O'qishni to'xtatish sababini yozing (kamida 3 belgi)");
+  const q = await pool.query('UPDATE oquvchilar SET faol=FALSE, nofaol_sana=$3::date, nofaol_sabab=$4 WHERE id=$1 AND filial_id=$2 AND faol',
+    [id, req.filialId, todayISO(), sabab]);
+  await holatNatija(q, id, req.filialId, res, "O'quvchi allaqachon nofaol");
+}));
+oquvchilar.post('/:id/faol', wrap(async (req, res) => {
+  const id = int(req.params.id) || 0;
+  const q = await pool.query("UPDATE oquvchilar SET faol=TRUE, nofaol_sana=NULL, nofaol_sabab='' WHERE id=$1 AND filial_id=$2 AND NOT faol", [id, req.filialId]);
+  await holatNatija(q, id, req.filialId, res, "O'quvchi allaqachon faol");
+}));
+router.use('/oquvchilar', oquvchilar);
 
 // ═══ GURUHLAR ════════════════════════════════════════════════════════════════
 router.get('/guruhlar', wrap(async (req, res) => {
@@ -222,7 +279,9 @@ router.get('/guruhlar/:id/davomat', wrap(async (req, res) => {
       FROM guruh_oquvchilari x
       JOIN oquvchilar o ON o.id=x.oquvchi_id
       LEFT JOIN davomat d ON d.guruh_id=x.guruh_id AND d.oquvchi_id=o.id AND d.sana=$2::date
-     WHERE x.guruh_id=$1 ORDER BY o.familiya, o.ism`, [gid, sana]);
+     WHERE x.guruh_id=$1
+       AND (o.faol OR o.nofaol_sana > $2::date)   -- nofaol qilingan sanadan boshlab davomatda chiqmaydi
+     ORDER BY o.familiya, o.ism`, [gid, sana]);
   res.json({ ok: true, sana, items: r.rows });
 }));
 // Davomatni saqlash (qayta saqlansa yangilanadi). Guruhda bo'lmagan o'quvchi e'tiborga olinmaydi.
@@ -246,7 +305,9 @@ router.put('/guruhlar/:id/davomat', wrap(async (req, res) => {
     INSERT INTO davomat(guruh_id, oquvchi_id, sana, holat)
     SELECT $1::int, x.oid, $2::date, x.h
       FROM unnest($3::int[], $4::text[]) AS x(oid, h)
-     WHERE EXISTS (SELECT 1 FROM guruh_oquvchilari go WHERE go.guruh_id=$1::int AND go.oquvchi_id=x.oid)
+     WHERE EXISTS (SELECT 1 FROM guruh_oquvchilari go JOIN oquvchilar q ON q.id=go.oquvchi_id
+                    WHERE go.guruh_id=$1::int AND go.oquvchi_id=x.oid
+                      AND (q.faol OR q.nofaol_sana > $2::date))
     ON CONFLICT (guruh_id, oquvchi_id, sana) DO UPDATE SET holat=EXCLUDED.holat, yangilangan=NOW()`,
     [gid, sana, ids, hol]);
   res.json({ ok: true, saqlandi: r.rowCount });

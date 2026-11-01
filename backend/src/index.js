@@ -17,12 +17,14 @@ const origins = (process.env.CORS_ORIGINS || '').split(',').map(s => s.trim()).f
 app.use(cors({
   origin: (origin, cb) => (!origin || origins.includes(origin)) ? cb(null, true) : cb(null, false),
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Filial-Id', 'X-Bot-Secret'],
 }));
 app.use(express.json({ limit: '100kb' }));
 
 app.get('/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
 app.use('/api/auth',         require('./routes/auth'));
+app.use('/api/filiallar',    require('./routes/filiallar'));
 app.use('/api/kurs-adminlar', require('./routes/kursAdminlar'));
 // DIQQAT: bot routeri panel routeridan OLDIN turishi shart — panel '/api' ga ulangan va panelAuth
 // barcha /api/* so'rovlarni ushlaydi (botning X-Bot-Secret'i u yerda 401 olardi).

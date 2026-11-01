@@ -9,13 +9,26 @@ bot/       Telegram bot: kursga yozilish va o'qituvchi vakansiyalariga ariza —
 deploy/    PM2, nginx, deploy.sh
 ```
 
+## Filiallar
+O'quv markazning bir nechta filiali bo'lishi mumkin. **Har filialning ma'lumotlari to'liq alohida**: fanlar, o'qituvchilar, o'quvchilar,
+guruhlar, to'lovlar, davomat, lidlar, vakansiyalar, nomzodlar. Filial admini faqat o'z filialini ko'radi va o'zgartiradi
+(boshqa filial obyektlariga murojaat «topilmadi» beradi; so'rovga filial sarlavhasini qo'shib ham filialni almashtirib bo'lmaydi).
+- Superadmin **🏢 Filiallar** bo'limida filial yaratadi (nomi bilan), tahrirlaydi, nofaol qiladi va **«Panelni ochish»** orqali istalgan
+  filialning to'liq admin panelini ochadi (qaytish: «← Filiallar»).
+- Admin yaratilganda filial tanlanadi; filialga bir nechta admin biriktirish mumkin. Adminni boshqa filialga o'tkazish mumkin.
+- Nofaol filial: adminlari kira olmaydi (eski tokenlar ham to'xtaydi), botda ko'rinmaydi. Superadmin uni baribir ko'ra oladi.
+- Faqat butunlay bo'sh (admin ham, ma'lumot ham yo'q) filialni o'chirish mumkin; aks holda nofaol qilinadi.
+- Fan nomlari filiallar orasida takrorlanishi mumkin (har filialning o'z fanlari).
+- Bot: bittadan ko'p faol filial bo'lsa, avval «Qaysi filial?» so'raydi; bitta bo'lsa bu qadam o'tkazib yuboriladi. Lid va nomzod arizasi
+  tanlangan guruh/vakansiya filialining paneliga tushadi.
+
 ## Rollar va kirish
 Hamma **login + parol** bilan `/index.html` sahifasidan kiradi; server rolni o'zi aniqlaydi.
 
 | Rol | Kim yaratadi | Imkoniyat |
 |---|---|---|
-| Superadmin (bitta, `backend/.env` da) | — | Adminlarni yaratish/tahrirlash/parolini almashtirish/faolsizlantirish; butun admin paneli |
-| Admin | Superadmin | Fanlar, guruhlar, o'quvchilar, o'qituvchilar, to'lovlar, davomat, lidlar, vakansiyalar, nomzodlar |
+| Superadmin (bitta, `backend/.env` da) | — | Filiallarni va adminlarni boshqarish (parolni almashtirish, faolsizlantirish); istalgan filial panelini ochish |
+| Admin (bitta filialga biriktirilgan) | Superadmin | O'z filialida: fanlar, guruhlar, o'quvchilar, o'qituvchilar, to'lovlar, davomat, lidlar, vakansiyalar, nomzodlar |
 
 - O'qituvchi va o'quvchilar uchun **panel yo'q** — ular admin panelida yuritiladigan yozuvlar (ism, telefon, guruh).
 - Telegram orqali kirish **olib tashlangan**. Bot tizimga kirish uchun ishlatilmaydi.
@@ -28,14 +41,14 @@ Hamma **login + parol** bilan `/index.html` sahifasidan kiradi; server rolni o'z
 ## Telegram bot
 Bot faqat ikki ish qiladi (menyu tugmalari):
 
-**📚 Kursga yozilish** → fan tanlanadi → guruhlar kartochkalari (o'qituvchi, dars kunlari, vaqt, oylik to'lov, boshlanish sanasi, bo'sh joy) →
+**📚 Kursga yozilish** → [filial] → fan tanlanadi → guruhlar kartochkalari (o'qituvchi, dars kunlari, vaqt, oylik to'lov, boshlanish sanasi, bo'sh joy) →
 «Shu guruhga yozilaman» → ism → telefon (kontakt tugmasi yoki yozib) → ariza admin panelning **📥 Lidlar** bo'limiga tushadi.
 - To'lgan va yopilgan guruhlar, nofaol fanlar botda ko'rinmaydi.
 - Bir odam bir guruhga ariza qoldirgan va u hali «Yangi/Aloqada» bo'lsa, takroriy ariza qabul qilinmaydi.
 - Lidda admin holatni (Yangi → Aloqada → Yozildi / Rad etildi) va izohni yuritadi, **«O'quvchiga aylantirish»** tugmasi bilan
   lid o'quvchi sifatida yaratilib, tanlagan guruhiga qo'shiladi.
 
-**💼 Vakansiyalar** → admin panelning **💼 Vakansiyalar** bo'limida yaratilgan faol vakansiyalar ro'yxati → tafsilot → «Ariza topshirish» →
+**💼 Vakansiyalar** → [filial] → admin panelning **💼 Vakansiyalar** bo'limida yaratilgan faol vakansiyalar ro'yxati → tafsilot → «Ariza topshirish» →
 ism → telefon → tajriba → rezyume (fayl yoki rasm, ixtiyoriy) → ariza **📨 Nomzodlar** bo'limiga tushadi.
 - Nomzod holati: Yangi → Ko'rildi → Suhbat → Qabul qilindi / Rad etildi. Rezyumeni admin paneldan «Rezyume» tugmasi bilan yuklab oladi
   (backend faylni Telegram'dan bot tokeni bilan oladi; Telegram limiti — 20 MB).
@@ -54,6 +67,8 @@ Menyuda yangi (ko'rilmagan) lid va nomzodlar soni ko'rsatiladi. Bot backend bila
 
 ## Eski bazadan o'tish
 `schema.sql` har ishga tushganda avtomatik migratsiya qiladi (qayta ishga tushirish xavfsiz):
+- **Filiallar:** `filiallar` jadvali yaratiladi va barcha mavjud ma'lumot (adminlar, fanlar, o'qituvchilar, o'quvchilar, guruhlar, lidlar,
+  vakansiyalar, nomzodlar) avtomatik **«Bosh filial»**ga o'tadi. Keyin uni «Tahrirlash» orqali nomini o'zgartirishingiz mumkin.
 - `kurs_adminlar` ga `login`, `parol_hash` qo'shiladi; `telegram_id` majburiy emas.
   **Eski adminlar login/parolsiz qoladi — superadmin har biriga «Tahrirlash» orqali login va parol belgilamaguncha kira olmaydi.**
 - Eski `login_tokenlar` jadvali o'chiriladi.
@@ -78,7 +93,8 @@ npm start
 ```
 Tasodifiy sir: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
 
-Birinchi qadam: superadmin sifatida kiring → «Admin qo'shish» → login va parol bering → admin shu bilan `/index.html` dan kiradi.
+Birinchi qadam: superadmin sifatida kiring → «Filial qo'shish» (yoki «Bosh filial»ning nomini o'zgartiring) → «Admin qo'shish» (filialni tanlab, login va parol bering) →
+admin shu bilan `/index.html` dan kiradi.
 Botga ma'lumot chiqishi uchun admin panelda kamida bitta **faol fan** va u bo'yicha **ochiq guruh** (o'qituvchi, jadval, narx bilan) yarating.
 
 ## Test

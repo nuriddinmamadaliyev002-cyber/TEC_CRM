@@ -214,3 +214,27 @@ CREATE TABLE IF NOT EXISTS nomzodlar (
 );
 CREATE INDEX IF NOT EXISTS idx_nomzodlar_holat ON nomzodlar(holat, yaratilgan DESC);
 CREATE INDEX IF NOT EXISTS idx_nomzodlar_vakansiya ON nomzodlar(vakansiya_id);
+
+-- ═══ Filiallar (migratsiya: qayta ishga tushirish xavfsiz) ═══════════════════
+-- Har bir filialning o'z adminlari, fanlari, o'qituvchilari, o'quvchilari, guruhlari, lidlari, vakansiyalari va nomzodlari bor.
+-- To'lov, davomat, guruh a'zoligi, to'lov qaydlari filialga guruh/o'quvchi orqali bog'lanadi.
+-- Mavjud ma'lumotlar avtomatik birinchi («Bosh filial») filialga o'tadi.
+CREATE TABLE IF NOT EXISTS filiallar (
+  id         SERIAL PRIMARY KEY,
+  nomi       TEXT NOT NULL,
+  faol       BOOLEAN NOT NULL DEFAULT TRUE,
+  yaratilgan TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_filiallar_nomi ON filiallar(LOWER(nomi));
+INSERT INTO filiallar(nomi) SELECT 'Bosh filial' WHERE NOT EXISTS (SELECT 1 FROM filiallar);
+
+DO $$
+DECLARE t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['kurs_adminlar','fanlar','oqituvchilar','oquvchilar','guruhlar','lidlar','vakansiyalar','nomzodlar'] LOOP
+    EXECUTE format('ALTER TABLE %I ADD COLUMN IF NOT EXISTS filial_id INTEGER REFERENCES filiallar(id) ON DELETE RESTRICT', t);
+    EXECUTE format('UPDATE %I SET filial_id = (SELECT MIN(id) FROM filiallar) WHERE filial_id IS NULL', t);
+    EXECUTE format('ALTER TABLE %I ALTER COLUMN filial_id SET NOT NULL', t);
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%s_filial ON %I(filial_id)', t, t);
+  END LOOP;
+END $$;

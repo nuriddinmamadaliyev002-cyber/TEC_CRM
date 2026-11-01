@@ -1,7 +1,13 @@
 (function () {
   if (!IC.requireRole(['kurs_admin', 'superadmin'])) return;
-  IC.header(IC.session.role() === 'superadmin' ? 'Superadmin' : 'Admin');
-  if (IC.session.role() === 'superadmin') document.getElementById('back-su').classList.remove('hidden');
+  const isSu = IC.session.role() === 'superadmin';
+  if (isSu && !IC.filial.id()) { location.replace('superadmin.html'); return; } // superadmin avval filialni tanlaydi
+  IC.header(isSu ? 'Superadmin' : 'Admin');
+  if (isSu) document.getElementById('back-su').classList.remove('hidden');
+  // Sarlavhada filial nomi: admin uchun server aytadi (/auth/me), superadmin uchun tanlagani
+  const setFilial = n => { const el = document.querySelector('.brand small'); if (el && n) el.textContent = n; document.title = (n ? n + ' — ' : '') + 'Admin paneli'; };
+  if (isSu) setFilial(IC.filial.nomi());
+  else IC.api('GET', '/auth/me').then(d => setFilial(d.filial && d.filial.nomi)).catch(() => {});
 
   const esc = IC.esc, view = document.getElementById('view');
   const full = o => `${o.familiya || ''} ${o.ism || ''}`.trim(); // FI: Familiya Ism

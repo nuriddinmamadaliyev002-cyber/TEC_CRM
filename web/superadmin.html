@@ -11,19 +11,27 @@
   <div class="top-in">
     <div class="brand"><img src="img/logo.png" alt=""><div>Today Education Centre<small>Superadmin</small></div></div>
     <div class="spacer"></div>
-    <a class="btn sm" href="panel.html" aria-label="Admin panelini ochish"><span class="hide-sm">Admin panelini ochish</span><span class="sm-only">Panel</span> →</a>
     <span class="who" id="whoami"></span>
     <button class="btn sm" id="logout" type="button">Chiqish</button>
   </div>
 </header>
 <main>
   <div class="stats" id="stats" style="margin-bottom:22px"></div>
+
+  <div class="head"><h2>🏢 Filiallar <span class="count" id="fcnt"></span></h2><div class="spacer"></div>
+    <button class="btn pri" id="fadd" type="button">+ Filial qo'shish</button></div>
+  <div class="card tw"><table class="rt">
+    <thead><tr><th>Filial</th><th>Adminlar</th><th>Guruhlar</th><th>O'quvchilar</th><th>Shu oy tushum</th><th>Yangi</th><th>Holat</th><th></th></tr></thead>
+    <tbody id="frows"></tbody></table><div class="empty hidden" id="fempty">Hali filiallar yo'q</div></div>
+  <p class="muted" style="font-size:13px;margin:12px 0 28px">Har bir filialning fanlari, guruhlari, o'quvchilari, o'qituvchilari, to'lovlari, lidlari va vakansiyalari alohida.
+    «Panelni ochish» tanlangan filialning to'liq admin panelini ochadi. Ma'lumoti bor filialni o'chirib bo'lmaydi — uni nofaol qiling (nofaol filial adminlari kira olmaydi va bot ko'rsatmaydi).</p>
+
   <div class="head"><h2>🎓 Adminlar <span class="count" id="cnt"></span></h2><div class="spacer"></div>
     <button class="btn pri" id="add" type="button">+ Admin qo'shish</button></div>
   <div class="card tw"><table class="rt">
-    <thead><tr><th>FI</th><th>Telefon</th><th>Login</th><th>Holat</th><th>Oxirgi kirish</th><th></th></tr></thead>
+    <thead><tr><th>FI</th><th>Filial</th><th>Telefon</th><th>Login</th><th>Holat</th><th>Oxirgi kirish</th><th></th></tr></thead>
     <tbody id="rows"></tbody></table><div class="empty hidden" id="empty">Hali adminlar yo'q</div></div>
-  <p class="muted" style="font-size:13px;margin-top:12px">Admin shu login va parol bilan kirish sahifasidan o'z paneliga kiradi. Parolni unutsa, «Tahrirlash» orqali yangisini belgilang (bo'sh qoldirilsa parol o'zgarmaydi).</p>
+  <p class="muted" style="font-size:13px;margin-top:12px">Admin o'z filialiga shu login va parol bilan kirish sahifasidan kiradi va faqat shu filial ma'lumotlarini ko'radi. Parolni unutsa, «Tahrirlash» orqali yangisini belgilang (bo'sh qoldirilsa parol o'zgarmaydi).</p>
 </main>
 <script src="js/common.js"></script>
 <script src="js/superadmin.js"></script>

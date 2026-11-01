@@ -1,9 +1,10 @@
 // ═══════════════════════════════════════════════════════════════════════════
 //  Today Education Centre — Telegram bot
-//  1) «📚 Kursga yozilish»: fan → guruh (kunlar, vaqt, oylik to'lov, o'qituvchi) → ism → telefon
-//     → admin panelning «Lidlar» bo'limiga ariza tushadi.
-//  2) «💼 Vakansiyalar»: o'qituvchi ish o'rinlari → ism → telefon → tajriba → rezyume (ixtiyoriy)
-//     → admin panelning «Nomzodlar» bo'limiga ariza tushadi.
+//  1) «📚 Kursga yozilish»: [filial] → fan → guruh (kunlar, vaqt, oylik to'lov, o'qituvchi) → ism → telefon
+//     → tanlangan guruh filialining admin paneli «Lidlar» bo'limiga ariza tushadi.
+//  2) «💼 Vakansiyalar»: [filial] → o'qituvchi ish o'rinlari → ism → telefon → tajriba → rezyume (ixtiyoriy)
+//     → shu vakansiya filialining «Nomzodlar» bo'limiga ariza tushadi.
+//  [filial] — faqat bittadan ko'p faol filial bo'lsa so'raladi (bitta bo'lsa o'tkazib yuboriladi).
 //  Bot tizimga kirish uchun ishlatilmaydi. Backend bilan X-Bot-Secret orqali gaplashadi.
 // ═══════════════════════════════════════════════════════════════════════════
 require('dotenv').config();
@@ -54,22 +55,35 @@ const welcome = (chatId, name) => bot.sendMessage(chatId,
 const toMenu = (chatId, text) => { state.delete(chatId); return bot.sendMessage(chatId, text, menuKb); };
 const serverDown = chatId => bot.sendMessage(chatId, "⚠️ Server bilan aloqa yo'q. Birozdan so'ng qayta urinib ko'ring.", menuKb);
 
-// ─── 1) Kursga yozilish ──────────────────────────────────────────────────────
-async function showFans(chatId) {
+// ─── Filial tanlash ──────────────────────────────────────────────────────────
+// Faol filiallar: 0 → xabar; 1 → to'g'ridan-to'g'ri keyingi qadam; ko'p → tanlash tugmalari (prefix: 'bc' kurs, 'bj' vakansiya)
+async function withFilial(chatId, prefix, next) {
   state.delete(chatId);
-  let r; try { r = await api('GET', '/bot/kurslar'); } catch (e) { console.error('kurslar:', e.message); return serverDown(chatId); }
-  if (!r.ok) { console.error('kurslar:', r.error); return serverDown(chatId); }
-  if (!r.fanlar.length) return bot.sendMessage(chatId, "Hozircha yozilish uchun ochiq guruhlar yo'q. Keyinroq qayta urinib ko'ring.", menuKb);
-  bot.sendMessage(chatId, '📚 <b>Qaysi fan bo\'yicha o\'qimoqchisiz?</b>', {
-    ...HTML, reply_markup: { inline_keyboard: r.fanlar.map(f => [{ text: f.nomi.slice(0, 60), callback_data: 'f:' + f.id }]) } });
+  let r; try { r = await api('GET', '/bot/filiallar'); } catch (e) { console.error('filiallar:', e.message); return serverDown(chatId); }
+  if (!r.ok) { console.error('filiallar:', r.error); return serverDown(chatId); }
+  if (!r.items.length) return bot.sendMessage(chatId, "Hozircha ma'lumot yo'q. Keyinroq qayta urinib ko'ring.", menuKb);
+  if (r.items.length === 1) return next(r.items[0].id);
+  bot.sendMessage(chatId, '🏢 <b>Qaysi filial?</b>', {
+    ...HTML, reply_markup: { inline_keyboard: r.items.map(f => [{ text: f.nomi.slice(0, 60), callback_data: `${prefix}:${f.id}` }]) } });
+}
+
+// ─── 1) Kursga yozilish ──────────────────────────────────────────────────────
+const showFans = (chatId) => withFilial(chatId, 'bc', fid => showFanList(chatId, fid));
+
+async function showFanList(chatId, filialId) {
+  let r; try { r = await api('GET', '/bot/kurslar?filial_id=' + filialId); } catch (e) { console.error('kurslar:', e.message); return serverDown(chatId); }
+  if (!r.ok) return bot.sendMessage(chatId, 'Bu filial hozircha mavjud emas.', menuKb);
+  if (!r.fanlar.length) return bot.sendMessage(chatId, `🏢 ${esc(r.filial.nomi)}\n\nHozircha yozilish uchun ochiq guruhlar yo'q. Keyinroq qayta urinib ko'ring.`, { ...HTML, ...menuKb });
+  bot.sendMessage(chatId, `🏢 <b>${esc(r.filial.nomi)}</b>\n\n📚 <b>Qaysi fan bo'yicha o'qimoqchisiz?</b>`, {
+    ...HTML, reply_markup: { inline_keyboard: r.fanlar.map(f => [{ text: f.nomi.slice(0, 60), callback_data: `f:${filialId}:${f.id}` }]) } });
 }
 
 const MAX_GROUPS = 10;
-async function showGroups(chatId, fanId) {
-  let r; try { r = await api('GET', '/bot/kurslar'); } catch (e) { console.error('kurslar:', e.message); return serverDown(chatId); }
+async function showGroups(chatId, filialId, fanId) {
+  let r; try { r = await api('GET', '/bot/kurslar?filial_id=' + filialId); } catch (e) { console.error('kurslar:', e.message); return serverDown(chatId); }
   const fan = r.ok && r.fanlar.find(f => f.id === fanId);
   if (!fan) return bot.sendMessage(chatId, "Bu fan bo'yicha hozircha ochiq guruh yo'q.", menuKb);
-  await bot.sendMessage(chatId, `<b>${esc(fan.nomi)}</b>${fan.tavsif ? '\n' + esc(fan.tavsif) : ''}\n\nQuyidagi guruhlardan birini tanlang 👇`, HTML);
+  await bot.sendMessage(chatId, `<b>${esc(fan.nomi)}</b> · 🏢 ${esc(r.filial.nomi)}${fan.tavsif ? '\n' + esc(fan.tavsif) : ''}\n\nQuyidagi guruhlardan birini tanlang 👇`, HTML);
   for (const g of fan.guruhlar.slice(0, MAX_GROUPS)) {
     const kunlar = (g.kunlar || []).map(k => KUN[k - 1]).filter(Boolean).join(', ');
     const lines = [`📘 <b>${esc(g.nomi)}</b>`,
@@ -85,18 +99,19 @@ async function showGroups(chatId, fanId) {
 }
 
 // ─── 2) Vakansiyalar ─────────────────────────────────────────────────────────
-async function showJobs(chatId) {
-  state.delete(chatId);
-  let r; try { r = await api('GET', '/bot/vakansiyalar'); } catch (e) { console.error('vakansiyalar:', e.message); return serverDown(chatId); }
-  if (!r.ok) { console.error('vakansiyalar:', r.error); return serverDown(chatId); }
-  if (!r.items.length) return bot.sendMessage(chatId, "Hozircha ochiq vakansiyalar yo'q. Keyinroq qayta urinib ko'ring.", menuKb);
-  bot.sendMessage(chatId, '💼 <b>Ochiq vakansiyalar</b>\nBatafsil ma\'lumot uchun tanlang:', {
+const showJobs = (chatId) => withFilial(chatId, 'bj', fid => showJobList(chatId, fid));
+
+async function showJobList(chatId, filialId) {
+  let r; try { r = await api('GET', '/bot/vakansiyalar?filial_id=' + filialId); } catch (e) { console.error('vakansiyalar:', e.message); return serverDown(chatId); }
+  if (!r.ok) return bot.sendMessage(chatId, 'Bu filial hozircha mavjud emas.', menuKb);
+  if (!r.items.length) return bot.sendMessage(chatId, `🏢 ${esc(r.filial.nomi)}\n\nHozircha ochiq vakansiyalar yo'q. Keyinroq qayta urinib ko'ring.`, { ...HTML, ...menuKb });
+  bot.sendMessage(chatId, `🏢 <b>${esc(r.filial.nomi)}</b>\n\n💼 <b>Ochiq vakansiyalar</b>\nBatafsil ma'lumot uchun tanlang:`, {
     ...HTML, reply_markup: { inline_keyboard: r.items.slice(0, 20).map(v => [{ text: v.nomi.slice(0, 60), callback_data: 'v:' + v.id }]) } });
 }
 async function showJob(chatId, id) {
-  let r; try { r = await api('GET', '/bot/vakansiyalar'); } catch (e) { console.error('vakansiyalar:', e.message); return serverDown(chatId); }
-  const v = r.ok && r.items.find(x => x.id === id);
-  if (!v) return bot.sendMessage(chatId, 'Bu vakansiya yopilgan.', menuKb);
+  let r; try { r = await api('GET', '/bot/vakansiya/' + id); } catch (e) { console.error('vakansiya:', e.message); return serverDown(chatId); }
+  if (!r.ok) return bot.sendMessage(chatId, 'Bu vakansiya yopilgan.', menuKb);
+  const v = r.item;
   const lines = [`💼 <b>${esc(v.nomi)}</b>`, v.fan_nomi ? `📚 Fan: ${esc(v.fan_nomi)}` : null, v.maosh ? `💰 Maosh: ${esc(v.maosh)}` : null,
     v.tavsif ? `\n${esc(v.tavsif)}` : null, v.talablar ? `\n<b>Talablar:</b>\n${esc(v.talablar)}` : null].filter(Boolean);
   bot.sendMessage(chatId, lines.join('\n'), { ...HTML, reply_markup: { inline_keyboard: [[{ text: '✍️ Ariza topshirish', callback_data: 'va:' + v.id }]] } });
@@ -171,11 +186,13 @@ bot.on('message', async msg => {
 bot.on('callback_query', async q => {
   bot.answerCallbackQuery(q.id).catch(() => {});
   const chatId = q.message && q.message.chat.id;
-  const m = /^(f|g|v|va):(\d{1,9})$/.exec(String(q.data || ''));
+  const m = /^(bc|bj|f|g|v|va):(\d{1,9})(?::(\d{1,9}))?$/.exec(String(q.data || ''));
   if (!chatId || !m) return;
   const id = Number(m[2]);
   try {
-    if (m[1] === 'f') return showGroups(chatId, id);
+    if (m[1] === 'bc') return showFanList(chatId, id);
+    if (m[1] === 'bj') return showJobList(chatId, id);
+    if (m[1] === 'f') return m[3] ? showGroups(chatId, id, Number(m[3])) : undefined;
     if (m[1] === 'v') return showJob(chatId, id);
     if (m[1] === 'g') { setState(chatId, 'lid', 'ism', { guruh_id: id }); return bot.sendMessage(chatId, "✍️ Ism va familiyangizni yozing:", cancelKb); }
     if (m[1] === 'va') { setState(chatId, 'nomzod', 'ism', { vakansiya_id: id }); return bot.sendMessage(chatId, "✍️ Ism va familiyangizni yozing:", cancelKb); }

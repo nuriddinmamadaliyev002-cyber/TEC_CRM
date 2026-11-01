@@ -1,6 +1,6 @@
 // Umumiy yordamchilar: API, token, toast, modal, forma
 (function () {
-  const K = { t: 'ic_token', r: 'ic_role', n: 'ic_ism' };
+  const K = { t: 'ic_token', r: 'ic_role', n: 'ic_ism', f: 'ic_filial', fn: 'ic_filial_nomi' };
   const ls = {
     get: k => { try { return localStorage.getItem(k); } catch (_) { return null; } },
     set: (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} },
@@ -15,14 +15,21 @@
   const session = {
     token: () => ls.get(K.t), role: () => ls.get(K.r), ism: () => ls.get(K.n),
     save(token, role, ism) { ls.set(K.t, token); ls.set(K.r, role); ls.set(K.n, ism || ''); },
-    clear() { ls.del(K.t); ls.del(K.r); ls.del(K.n); },
+    clear() { ls.del(K.t); ls.del(K.r); ls.del(K.n); filial.clear(); },
   };
+  // Superadmin qaysi filial bilan ishlayotgani (har so'rovga X-Filial-Id bo'lib ketadi). Admin uchun kerak emas — server uni o'z filialiga bog'laydi.
+  const filial = {
+    id: () => ls.get(K.f), nomi: () => ls.get(K.fn),
+    set(id, nomi) { ls.set(K.f, String(id)); ls.set(K.fn, nomi || ''); },
+    clear() { ls.del(K.f); ls.del(K.fn); },
+  };
+  const filialHdr = () => (session.role() === 'superadmin' && filial.id() ? { 'X-Filial-Id': filial.id() } : {});
   // «Chiqish» va sessiya tugashi: sessiya tozalanadi va kirish sahifasiga qaytiladi
   function logout() { session.clear(); location.href = 'index.html'; }
   const relogin = logout;
 
   async function api(method, path, body) {
-    const h = { 'Content-Type': 'application/json' };
+    const h = { 'Content-Type': 'application/json', ...filialHdr() };
     const t = session.token(); if (t) h.Authorization = 'Bearer ' + t;
     let r, d;
     try {
@@ -30,6 +37,8 @@
       d = await r.json();
     } catch (_) { throw new Error("Server bilan aloqa yo'q"); }
     if (r.status === 401 && d.expired && t) { relogin(); throw new Error('Sessiya tugadi'); }
+    // Superadmin tanlagan filial o'chirilgan bo'lsa — filial tanlash sahifasiga qaytaramiz
+    if (r.status === 404 && d.error === 'Filial topilmadi' && session.role() === 'superadmin') { filial.clear(); location.href = 'superadmin.html'; throw new Error(d.error); }
     if (!r.ok || d.ok === false) throw new Error(d.error || 'Xatolik');
     return d;
   }
@@ -37,7 +46,7 @@
   // Autentifikatsiyali fayl yuklab olish (Excel va h.k.)
   async function download(path, filename) {
     const t = session.token(); let r;
-    try { r = await fetch('/api' + path, { headers: t ? { Authorization: 'Bearer ' + t } : {} }); }
+    try { r = await fetch('/api' + path, { headers: { ...filialHdr(), ...(t ? { Authorization: 'Bearer ' + t } : {}) } }); }
     catch (_) { throw new Error("Server bilan aloqa yo'q"); }
     if (!r.ok) {
       let m = 'Xatolik'; try { m = (await r.json()).error || m; } catch (_) {}
@@ -180,5 +189,5 @@
   }
   initBurger();
 
-  window.IC = { api, esc, money, fdate, isoDay, session, logout, relogin, download, toast, formModal, confirmBox, ask, header, requireRole };
+  window.IC = { api, esc, money, fdate, isoDay, session, filial, logout, relogin, download, toast, formModal, confirmBox, ask, header, requireRole };
 })();

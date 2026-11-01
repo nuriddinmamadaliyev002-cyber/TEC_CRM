@@ -4,56 +4,61 @@ Online kurslar boshqaruvi — **CRM'dan mustaqil** project (alohida baza, alohid
 
 ```
 backend/   Express + PostgreSQL API  (port 3010) — web/ ni ham xizmat qiladi
-web/       index (kirish) · miniapp (Telegram Mini App) · superadmin · panel (kurs admin) · oqituvchi · oquvchi
-bot/       Kirish boti (Telegram) — alohida jarayon
+web/       index (kirish) · superadmin · panel (admin)
+bot/       Telegram bot: kursga yozilish va o'qituvchi vakansiyalariga ariza — alohida jarayon
 deploy/    PM2, nginx, deploy.sh
 ```
 
-## Rollar
-| Rol | Kirish | Imkoniyat |
+## Rollar va kirish
+Hamma **login + parol** bilan `/index.html` sahifasidan kiradi; server rolni o'zi aniqlaydi.
+
+| Rol | Kim yaratadi | Imkoniyat |
 |---|---|---|
-| Superadmin (bitta, `.env`da) | username + parol | Kurs adminlarini boshqarish, butun panel |
-| Kurs admin | **Telegram bot orqali** | Fanlar, guruhlar, o'quvchilar, o'qituvchilar, to'lovlar |
-| O'qituvchi | **Telegram bot orqali** | Faqat o'z guruhlari: o'quvchilar ro'yxati va davomat (to'lov/narx ko'rinmaydi) |
-| O'quvchi | **Telegram bot orqali** | Faqat o'z ma'lumoti: guruhlari, davomati va to'lovlari (faqat ko'rish) |
+| Superadmin (bitta, `backend/.env` da) | — | Adminlarni yaratish/tahrirlash/parolini almashtirish/faolsizlantirish; butun admin paneli |
+| Admin | Superadmin | Fanlar, guruhlar, o'quvchilar, o'qituvchilar, to'lovlar, davomat, lidlar, vakansiyalar, nomzodlar |
+
+- O'qituvchi va o'quvchilar uchun **panel yo'q** — ular admin panelida yuritiladigan yozuvlar (ism, telefon, guruh).
+- Telegram orqali kirish **olib tashlangan**. Bot tizimga kirish uchun ishlatilmaydi.
+- Admin login: 3–32 belgi (lotin harflari, raqam, `_ . -`), katta-kichik harfga befarq. Parol kamida 8 belgi, bcrypt bilan saqlanadi.
+- Parolni unutgan adminga superadmin «Tahrirlash» orqali yangi parol belgilaydi (bo'sh qoldirilsa parol o'zgarmaydi).
+- Admin nofaol qilinsa yoki o'chirilsa, eski tokeni ham darhol o'tmaydi.
+- Brute-force: bir IP dan 15 daqiqada 10 ta login urinishi (`LOGIN_MAX_ATTEMPTS` bilan o'zgartiriladi).
+- Interfeysda «Admin» deyiladi; bazada jadval nomi tarixiy `kurs_adminlar`, tokendagi rol `kurs_admin` bo'lib qolgan.
+
+## Telegram bot
+Bot faqat ikki ish qiladi (menyu tugmalari):
+
+**📚 Kursga yozilish** → fan tanlanadi → guruhlar kartochkalari (o'qituvchi, dars kunlari, vaqt, oylik to'lov, boshlanish sanasi, bo'sh joy) →
+«Shu guruhga yozilaman» → ism → telefon (kontakt tugmasi yoki yozib) → ariza admin panelning **📥 Lidlar** bo'limiga tushadi.
+- To'lgan va yopilgan guruhlar, nofaol fanlar botda ko'rinmaydi.
+- Bir odam bir guruhga ariza qoldirgan va u hali «Yangi/Aloqada» bo'lsa, takroriy ariza qabul qilinmaydi.
+- Lidda admin holatni (Yangi → Aloqada → Yozildi / Rad etildi) va izohni yuritadi, **«O'quvchiga aylantirish»** tugmasi bilan
+  lid o'quvchi sifatida yaratilib, tanlagan guruhiga qo'shiladi.
+
+**💼 Vakansiyalar** → admin panelning **💼 Vakansiyalar** bo'limida yaratilgan faol vakansiyalar ro'yxati → tafsilot → «Ariza topshirish» →
+ism → telefon → tajriba → rezyume (fayl yoki rasm, ixtiyoriy) → ariza **📨 Nomzodlar** bo'limiga tushadi.
+- Nomzod holati: Yangi → Ko'rildi → Suhbat → Qabul qilindi / Rad etildi. Rezyumeni admin paneldan «Rezyume» tugmasi bilan yuklab oladi
+  (backend faylni Telegram'dan bot tokeni bilan oladi; Telegram limiti — 20 MB).
+- Vakansiya yopilsa (Faol emas) botdan yo'qoladi, kelgan nomzodlar saqlanadi.
+
+Menyuda yangi (ko'rilmagan) lid va nomzodlar soni ko'rsatiladi. Bot backend bilan `X-Bot-Secret` orqali gaplashadi (`/api/bot/*`).
 
 ## Fanlar, o'qituvchilar va dars jadvali
 - **Fan** — o'quv markazda o'tiladigan fanlar nomenklaturasi (nomi, tavsif, faol). Narx va davomiylik yo'q.
-- **O'qituvchi** bitta fanga biriktiriladi (dropdown). Guruh yaratishda o'qituvchilar ro'yxati tanlangan fanga qarab chiqadi; API ham
+- **O'qituvchi** bitta fanga biriktiriladi. Guruh yaratishda o'qituvchilar ro'yxati tanlangan fanga qarab chiqadi; API ham
   boshqa fan o'qituvchisini guruhga qo'yishga yo'l qo'ymaydi.
 - **Dars jadvali** — kunlar (`kunlar`: 1=Du … 7=Yak) va boshlanish vaqti (`soat`: `HH:MM`). Ko'rsatish uchun `jadval` matni
   (masalan `Du-Chor-Ju 19:00`) shulardan serverda hosil qilinadi.
-- Eski bazalar `schema.sql` ishga tushganda avtomatik migratsiya qilinadi: `kurslar` → `fanlar`, `guruhlar.kurs_id` → `fan_id`,
-  `narx`/`davomiylik_oy` olib tashlanadi, o'qituvchining matnli `fan` qiymati nomi mos kelgan fanga bog'lanadi.
+- **Davomat** — admin panelda: Guruhlar → «Davomat» → sana → har bir o'quvchi uchun Keldi / Kelmadi / Sababli (kelajak sanasi mumkin emas).
+- To'lovlar oylik reestr ko'rinishida yuritiladi, Excel'ga yuklanadi.
 
-## Telegram orqali kirish (xavfsiz oqim)
-Kurs admin, o'qituvchi va o'quvchi shu oqimdan foydalanadi; farqi — kirish sahifasidagi tugma (`rol`) va tekshiriladigan jadval
-(`kurs_adminlar`, `oqituvchilar` yoki `oquvchilar`). O'qituvchi/o'quvchi kira olishi uchun kurs admin uni panelda qo'shib,
-**Telegram ID**'sini kiritishi va «Faol» qoldirishi kerak (ID o'qituvchilar orasida ham, o'quvchilar orasida ham takrorlanmaydi). Bot kodi o'zgarmagan.
-
-1. Web: «Telegram orqali kirish» → backend bir martalik token yaratadi (5 daqiqa).
-2. Brauzer `t.me/<bot>?start=login_<token>` ni ochadi va tokenni so'rab turadi.
-3. Bot `/start`ni oladi — **Telegram ID'ni Telegramning o'zi beradi** (soxtalashtirib bo'lmaydi) — va backendga `X-Bot-Secret` bilan yuboradi.
-4. Backend ID `kurs_adminlar`da faol ekanini tekshiradi → bot «✅ Tasdiqlayman» tugmasini beradi.
-5. Tasdiqlangach brauzer JWT oladi (token bir marta beriladi va o'chiriladi).
-
-## Botdan to'g'ridan-to'g'ri kirish
-Telegram ID'si biriktirilgan faol foydalanuvchi botga `/start` yozsa, bot unga **faqat «🔐 Tizimga kirish» tugmasini** beradi
-(`POST /auth/telegram/bot-roles` rolni aniqlaydi, token/havola yaratmaydi). Xabar boshqa odamga yuborilsa ham u orqali kirib bo'lmaydi:
-tugma har bosgan odamning O'Z imzolangan Telegram ID'sini tekshiradi.
-
-## Kirish (yakuniy tartib)
-- **Superadmin** — faqat saytning o'zida (`/index.html`): username + parol. Bu sahifada boshqa kirish usuli yo'q.
-- **Kurs admin / o'qituvchi / o'quvchi** — faqat Telegram botdagi **«🔐 Tizimga kirish»** tugmasi orqali (Mini App). Tugma:
-  botga `/start` yozilganda yuboriladi va chatda **qadab qo'yiladi (pin)**, chat menyu tugmasi ham shu; istalgan matn yozilsa bot tugmani qayta beradi.
-  Tugmaning muddati yo'q — har bosganda Telegram yangi imzolangan `initData` beradi.
-- Oqim: Mini App `initData`ni `POST /api/auth/telegram/miniapp`ga yuboradi (HMAC imzo `backend/src/telegramWebApp.js`da tekshiriladi) →
-  JWT olinadi → oraliq oynasiz to'g'ridan-to'g'ri panelga o'tadi. Bir nechta rol bo'lsa, rol tanlanadi; ID biriktirilmagan bo'lsa ID ko'rsatiladi.
-- **Chiqish** Mini App'da oynani yopadi (kirish sahifasi ko'rsatilmaydi). Sessiya muddati tugasa, Mini App jimgina qayta kiradi.
-- Qoida: ID `kurs_adminlar` / `oqituvchilar` / `oquvchilar` da **faol** va jadvalda **aynan bitta** bo'lishi shart.
-- **Sozlash:** `backend/.env` va `bot/.env` ikkalasida `KURS_BOT_TOKEN` (bir xil), ikkalasida `WEB_URL=https://...` bo'lsin.
-- Eski brauzer-orqali Telegram kirish endpoint'lari (`/telegram/start`, `poll`, `bot-check`, `bot-confirm`, `bot-direct`, `miniapp-handoff`) backendda qoldirilgan, lekin web sahifa va bot endi ishlatmaydi.
-- ngrok bepul domenida birinchi ochilishda «Visit Site» ogohlantirishi chiqishi mumkin.
+## Eski bazadan o'tish
+`schema.sql` har ishga tushganda avtomatik migratsiya qiladi (qayta ishga tushirish xavfsiz):
+- `kurs_adminlar` ga `login`, `parol_hash` qo'shiladi; `telegram_id` majburiy emas.
+  **Eski adminlar login/parolsiz qoladi — superadmin har biriga «Tahrirlash» orqali login va parol belgilamaguncha kira olmaydi.**
+- Eski `login_tokenlar` jadvali o'chiriladi.
+- O'qituvchi/o'quvchilardagi `telegram_id` ustuni bazada qoladi (formada ko'rsatilmaydi va ishlatilmaydi).
+- Yangi jadvallar: `lidlar`, `vakansiyalar`, `nomzodlar`.
 
 ## Ishga tushirish (lokal)
 ```bash
@@ -63,15 +68,25 @@ sudo -u postgres psql -c "CREATE USER today_edu_user WITH PASSWORD 'KUCHLI_PAROL
 
 # 2) Backend
 cd backend && npm install && cp .env.example .env
-#    .env: DB_PASSWORD, JWT_SECRET, BOT_SECRET (har biri uzun tasodifiy), KURS_BOT_USERNAME
+#    .env: DB_PASSWORD, JWT_SECRET, BOT_SECRET (har biri uzun tasodifiy), KURS_BOT_TOKEN
 npm run hash -- "superadmin_parol"      # chiqqan qiymatni SUPERADMIN_PASSWORD_HASH ga qo'ying
 npm run db:setup && npm start           # http://127.0.0.1:3010
 
-# 3) Bot  (avval @BotFather'da yangi bot yarating)
-cd ../bot && npm install && cp .env.example .env   # KURS_BOT_TOKEN, BOT_SECRET (backenddagi bilan bir xil)
+# 3) Bot  (avval @BotFather'da bot yarating)
+cd ../bot && npm install && cp .env.example .env   # KURS_BOT_TOKEN (backenddagi bilan bir xil), BOT_SECRET (backenddagi bilan bir xil)
 npm start
 ```
 Tasodifiy sir: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
+
+Birinchi qadam: superadmin sifatida kiring → «Admin qo'shish» → login va parol bering → admin shu bilan `/index.html` dan kiradi.
+Botga ma'lumot chiqishi uchun admin panelda kamida bitta **faol fan** va u bo'yicha **ochiq guruh** (o'qituvchi, jadval, narx bilan) yarating.
+
+## Test
+Ishlayotgan server va baza bilan (`LOGIN_MAX_ATTEMPTS=100` — test o'zi login cheklovi ostiga tushmasligi uchun):
+```bash
+cd backend && LOGIN_MAX_ATTEMPTS=100 npm start &     # alohida terminalda ham bo'ladi
+LOGIN_MAX_ATTEMPTS=100 node scripts/e2e.js           # superadmin paroli: TestParol123 (hash .env da)
+```
 
 ## Deploy
 `deploy/` ichidagi `ecosystem.config.js`, `nginx-courses.conf`, `deploy.sh` ga qarang.
@@ -81,12 +96,10 @@ Tasodifiy sir: `node -e "console.log(require('crypto').randomBytes(48).toString(
 ```bash
 cp .env.docker.example .env        # ildizdagi .env: DB_PASSWORD (postgres va backend uchun bitta parol)
 # backend/.env va bot/.env ni .env.example'lardan to'ldiring.
-# bot/.env ga ham WEB_URL=https://... qo'shing (Mini App va «Web panel» tugmalari shundan chiqadi)
 docker compose up -d --build
 docker compose logs -f backend bot
 ```
-- Hammasi **http://localhost:3010** da (backend `web/` ni ham beradi). ngrok: `ngrok http 3010`, so'ng `WEB_URL` ni
-  `backend/.env` va `bot/.env` da yangilab, `docker compose up -d` qiling.
+- Hammasi **http://localhost:3010** da (backend `web/` ni ham beradi).
 - Konteynerda `HOST`, `DB_HOST`, `API_BASE` avtomatik to'g'rilanadi (`docker-compose.yml` dagi `environment`), `.env` dagi `localhost` qiymatlari ta'sir qilmaydi.
 - Sxema backend har ishga tushganda qo'llanadi (`db:setup`, qayta ishga tushirish xavfsiz). Baza ma'lumotlari `pgdata` volume'ida saqlanadi.
-- `web/Dockerfile` endi ishlatilmaydi (alohida `web` servisi olib tashlandi) — o'chirib yuborishingiz mumkin.
+- `web/Dockerfile` ishlatilmaydi — o'chirib yuborishingiz mumkin.

@@ -9,25 +9,14 @@
 <body>
 <div class="login-wrap"><div class="card login">
   <div class="brand"><img src="img/logo.png" alt="">Today Education Centre</div>
-  <p class="sub">Superadmin kirishi</p>
+  <p class="sub">Tizimga kirish</p>
 
-  <form id="v-super" novalidate>
-    <div class="fld"><label for="u">Username</label><input id="u" autocomplete="username" required></div>
+  <form id="f" novalidate>
+    <div class="fld"><label for="u">Login</label><input id="u" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
     <div class="fld"><label for="p">Parol</label><input id="p" type="password" autocomplete="current-password" required></div>
-    <div class="err" id="su-err" role="alert"></div>
-    <button class="btn pri" id="su-go">Kirish</button>
+    <div class="err" id="err" role="alert"></div>
+    <button class="btn pri" id="go">Kirish</button>
   </form>
-
-  <div id="v-out" class="hidden" style="text-align:center">
-    <b>Siz tizimdan chiqdingiz</b>
-    <p class="muted" style="margin:8px 0 14px">Qayta kirish uchun Telegram botdagi «🔐 Tizimga kirish» tugmasini bosing.</p>
-    <a class="btn pri" href="https://t.me/TodayEducation_bot" rel="noopener">Botga o'tish</a>
-  </div>
-
-  <div id="bt-wait" class="wait hidden"><div class="spin" aria-hidden="true"></div><b>Kirilmoqda…</b></div>
-  <div id="bt-fail" class="hidden" style="text-align:center"><div class="err" id="bt-err" role="alert"></div>
-    <p class="muted" style="margin-top:12px">Kurs admin, o'qituvchi va o'quvchilar Telegram botdagi «🔐 Tizimga kirish» tugmasi orqali kiradi.</p></div>
-
 </div></div>
 <script src="js/common.js"></script>
 <script src="js/login.js"></script>

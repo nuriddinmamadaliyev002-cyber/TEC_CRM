@@ -24,10 +24,9 @@ app.get('/health', (req, res) => res.json({ ok: true, time: new Date().toISOStri
 
 app.use('/api/auth',         require('./routes/auth'));
 app.use('/api/kurs-adminlar', require('./routes/kursAdminlar'));
-// DIQQAT: o'qituvchi/o'quvchi routerlari panel routeridan OLDIN turishi shart — panel '/api' ga ulangan
-// va panelAuth barcha /api/* so'rovlarni ushlaydi (ularning tokeni u yerda 403 olardi).
-app.use('/api/oqituvchi-panel', require('./routes/oqituvchiPanel'));
-app.use('/api/oquvchi-panel',    require('./routes/oquvchiPanel'));
+// DIQQAT: bot routeri panel routeridan OLDIN turishi shart — panel '/api' ga ulangan va panelAuth
+// barcha /api/* so'rovlarni ushlaydi (botning X-Bot-Secret'i u yerda 401 olardi).
+app.use('/api/bot',          require('./routes/bot'));
 app.use('/api',              require('./routes/panel'));
 
 // Web panel (nginx bo'lmasa ham ishlashi uchun)

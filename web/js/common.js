@@ -17,27 +17,9 @@
     save(token, role, ism) { ls.set(K.t, token); ls.set(K.r, role); ls.set(K.n, ism || ''); },
     clear() { ls.del(K.t); ls.del(K.r); ls.del(K.n); },
   };
-  // Telegram Mini App ichida ochilganmi (telegram-web-app.js yuklangan va imzolangan initData bor)
-  const tgApp = () => { const t = window.Telegram && window.Telegram.WebApp; return t && t.initData ? t : null; };
-  // «Chiqish»: Mini App ichida oynani yopadi (kirish sahifasi ko'rsatilmaydi).
-  // Superadmin kirish formasiga qaytadi. Kurs admin / o'qituvchi / o'quvchi: web tab to'liq YOPILADI.
-  // (Brauzer faqat tarixida bitta sahifa bo'lgan tabni skript bilan yopishga ruxsat beradi — Telegram ochgan tab shunday.
-  //  Yopilmasa, zaxira: 300 ms dan so'ng botga o'tadi.)
-  const BOT_URL = 'https://t.me/TodayEducation_bot';
-  function leave(role) {
-    if (role === 'superadmin') { location.href = 'index.html'; return; }
-    try { window.close(); } catch (_) {}
-    setTimeout(() => location.replace(BOT_URL), 300);
-  }
-  function logout() {
-    const role = session.role();
-    session.clear();
-    const t = tgApp();
-    if (t && typeof t.close === 'function') { try { t.close(); return; } catch (_) {} }
-    leave(role);
-  }
-  // Sessiya muddati tugadi / yaroqsiz: Mini App ichida jimgina qayta kiradi (miniapp.html), brauzerda tab yopiladi (superadmin — kirish sahifasi)
-  function relogin() { const role = session.role(); session.clear(); if (tgApp()) location.replace('miniapp.html'); else leave(role); }
+  // «Chiqish» va sessiya tugashi: sessiya tozalanadi va kirish sahifasiga qaytiladi
+  function logout() { session.clear(); location.href = 'index.html'; }
+  const relogin = logout;
 
   async function api(method, path, body) {
     const h = { 'Content-Type': 'application/json' };
@@ -77,7 +59,7 @@
   }
 
   // Forma maydonlari: {k, label, type: text|number|tel|date|select|textarea|checkbox|days, req, options:[{v,t}], full,
-  //   placeholder (select: birinchi bo'sh variant matni), dependsOn (select: boshqa select maydoni kaliti; options[].group shu qiymatga teng bo'lganlari ko'rinadi)}
+  //   autocomplete (input), placeholder (select: birinchi bo'sh variant matni), dependsOn (select: boshqa select maydoni kaliti; options[].group shu qiymatga teng bo'lganlari ko'rinadi)}
   const DAYS = [['Du', 'Dushanba'], ['Se', 'Seshanba'], ['Chor', 'Chorshanba'], ['Pay', 'Payshanba'], ['Ju', 'Juma'], ['Sha', 'Shanba'], ['Yak', 'Yakshanba']];
   function fieldHTML(f, val) {
     const id = 'f_' + f.k, v = val == null ? '' : val, req = f.req ? ' required' : '';
@@ -96,7 +78,7 @@
       return `<div class="fld chk"><label><input type="checkbox" id="${id}"${v ? ' checked' : ''}> ${esc(f.label)}</label></div>`;
     } else {
       const ex = f.type === 'number' ? ' min="0" step="any"' : '';
-      inp = `<input id="${id}" type="${f.type || 'text'}" value="${esc(v)}"${req}${ex}${f.inputmode ? ` inputmode="${f.inputmode}"` : ''}>`;
+      inp = `<input id="${id}" type="${f.type || 'text'}" value="${esc(v)}"${req}${ex}${f.inputmode ? ` inputmode="${f.inputmode}"` : ''}${f.autocomplete ? ` autocomplete="${f.autocomplete}"` : ''}>`;
     }
     return `<div class="fld"><label for="${id}">${esc(f.label)}${f.req ? ' *' : ''}</label>${inp}</div>`;
   }
@@ -105,7 +87,7 @@
     fields.forEach(f => {
       const el = root.querySelector('#f_' + f.k);
       if (f.type === 'days') o[f.k] = [...el.querySelectorAll('input:checked')].map(i => Number(i.value));
-      else o[f.k] = f.type === 'checkbox' ? el.checked : el.value.trim();
+      else o[f.k] = f.type === 'checkbox' ? el.checked : f.type === 'password' ? el.value : el.value.trim(); // parol bo'sh joylari saqlanadi
     });
     return o;
   }
@@ -198,5 +180,5 @@
   }
   initBurger();
 
-  window.IC = { api, esc, money, fdate, isoDay, session, logout, relogin, tgApp, download, toast, formModal, confirmBox, ask, header, requireRole };
+  window.IC = { api, esc, money, fdate, isoDay, session, logout, relogin, download, toast, formModal, confirmBox, ask, header, requireRole };
 })();

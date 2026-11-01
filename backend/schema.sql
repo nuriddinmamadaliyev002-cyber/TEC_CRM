@@ -13,28 +13,28 @@ BEGIN
 END $$;
 DROP INDEX IF EXISTS idx_guruhlar_kurs;
 
--- Kurs adminlari (Telegram bot orqali kiradi). Superadmin .env da, jadvalda emas.
+-- Adminlar (interfeysda «Admin»; jadval nomi tarixiy: kurs_adminlar). Login + parol bilan kiradi,
+-- ularni superadmin yaratadi. Superadmin .env da, jadvalda emas.
 CREATE TABLE IF NOT EXISTS kurs_adminlar (
   id          SERIAL PRIMARY KEY,
   ism         TEXT NOT NULL,
   familiya    TEXT NOT NULL DEFAULT '',
   telefon     TEXT NOT NULL DEFAULT '',
-  telegram_id BIGINT NOT NULL UNIQUE,
+  telegram_id BIGINT UNIQUE,
+  login       TEXT,
+  parol_hash  TEXT,
   faol        BOOLEAN NOT NULL DEFAULT TRUE,
   yaratilgan  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   oxirgi_kirish TIMESTAMPTZ
 );
+-- Eski bazalar: Telegram ID endi kirish uchun kerak emas; login/parol qo'shiladi (login'siz eski adminlar superadmin tayinlaguncha kira olmaydi)
+ALTER TABLE kurs_adminlar ALTER COLUMN telegram_id DROP NOT NULL;
+ALTER TABLE kurs_adminlar ADD COLUMN IF NOT EXISTS login TEXT;
+ALTER TABLE kurs_adminlar ADD COLUMN IF NOT EXISTS parol_hash TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_kurs_adminlar_login ON kurs_adminlar(LOWER(login)) WHERE login IS NOT NULL;
 
--- Bir martalik kirish tokenlari: pending → awaiting → approved | rejected
-CREATE TABLE IF NOT EXISTS login_tokenlar (
-  token          TEXT PRIMARY KEY,
-  holat          TEXT NOT NULL DEFAULT 'pending',
-  kurs_admin_id  INTEGER REFERENCES kurs_adminlar(id) ON DELETE CASCADE,
-  telegram_id    BIGINT,
-  yaratilgan     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  muddat TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '5 minutes')
-);
-CREATE INDEX IF NOT EXISTS idx_login_tokenlar_muddat ON login_tokenlar(muddat);
+-- Telegram orqali kirish bekor qilindi: eski bir martalik tokenlar jadvali kerak emas
+DROP TABLE IF EXISTS login_tokenlar;
 
 -- Fanlar: o'quv markazda o'tiladigan fanlar nomenklaturasi
 CREATE TABLE IF NOT EXISTS fanlar (
@@ -105,10 +105,7 @@ CREATE TABLE IF NOT EXISTS tolovlar (
 CREATE INDEX IF NOT EXISTS idx_tolovlar_oquvchi ON tolovlar(oquvchi_id);
 CREATE INDEX IF NOT EXISTS idx_tolovlar_sana    ON tolovlar(sana);
 
--- ═══ O'qituvchi paneli (migratsiya: qayta ishga tushirish xavfsiz) ═══════════
--- Kirish tokeni qaysi rol uchun ekanini bilsin: 'kurs_admin' | 'oqituvchi'
-ALTER TABLE login_tokenlar ADD COLUMN IF NOT EXISTS rol TEXT NOT NULL DEFAULT 'kurs_admin';
-ALTER TABLE login_tokenlar ADD COLUMN IF NOT EXISTS oqituvchi_id INTEGER REFERENCES oqituvchilar(id) ON DELETE CASCADE;
+-- ═══ Davomat (migratsiya: qayta ishga tushirish xavfsiz) ═══════════
 ALTER TABLE oqituvchilar   ADD COLUMN IF NOT EXISTS oxirgi_kirish TIMESTAMPTZ;
 
 -- Davomat: guruh + o'quvchi + kun bo'yicha bitta yozuv
@@ -123,8 +120,7 @@ CREATE TABLE IF NOT EXISTS davomat (
 CREATE INDEX IF NOT EXISTS idx_davomat_guruh_sana ON davomat(guruh_id, sana);
 CREATE INDEX IF NOT EXISTS idx_guruhlar_oqituvchi ON guruhlar(oqituvchi_id);
 
--- ═══ O'quvchi paneli (migratsiya: qayta ishga tushirish xavfsiz) ═════════════
-ALTER TABLE login_tokenlar ADD COLUMN IF NOT EXISTS oquvchi_id INTEGER REFERENCES oquvchilar(id) ON DELETE CASCADE;
+-- ═══ Indekslar (migratsiya: qayta ishga tushirish xavfsiz) ═════════════
 ALTER TABLE oquvchilar     ADD COLUMN IF NOT EXISTS oxirgi_kirish TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_davomat_oquvchi ON davomat(oquvchi_id, sana);
 
@@ -132,7 +128,7 @@ CREATE INDEX IF NOT EXISTS idx_davomat_oquvchi ON davomat(oquvchi_id, sana);
 ALTER TABLE oqituvchilar ADD COLUMN IF NOT EXISTS fan_id INTEGER REFERENCES fanlar(id) ON DELETE RESTRICT;
 CREATE INDEX IF NOT EXISTS idx_oqituvchilar_fan ON oqituvchilar(fan_id);
 -- Eski matnli «fan» ustunini nomi mos kelgan fanga bog'laymiz (katta-kichik harf farqi inobatga olinmaydi), so'ng ustunni olib tashlaymiz.
--- Mos kelmaganlarning fani bo'sh qoladi — kurs admin uni tahrirlashda tanlaydi.
+-- Mos kelmaganlarning fani bo'sh qoladi — admin uni tahrirlashda tanlaydi.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns
@@ -168,3 +164,53 @@ CREATE TABLE IF NOT EXISTS tolov_eslatmalar (
 -- Guruhi ko'rsatilmagan eski to'lovlar: o'quvchi aynan bitta guruhda bo'lsa, shu guruhga biriktiramiz
 UPDATE tolovlar t SET guruh_id = (SELECT x.guruh_id FROM guruh_oquvchilari x WHERE x.oquvchi_id = t.oquvchi_id)
  WHERE t.guruh_id IS NULL AND (SELECT COUNT(*) FROM guruh_oquvchilari x WHERE x.oquvchi_id = t.oquvchi_id) = 1;
+
+-- ═══ Telegram bot: lidlar (kursga yozilish), vakansiyalar va nomzodlar ═══════
+-- Lid: botda o'quvchi tanlagan fan/guruh bo'yicha qoldirgan ariza. Guruh o'chsa ham yozuv qoladi (nomi nusxalanadi).
+CREATE TABLE IF NOT EXISTS lidlar (
+  id            SERIAL PRIMARY KEY,
+  ism           TEXT NOT NULL,
+  telefon       TEXT NOT NULL,
+  telegram_id   BIGINT,
+  username      TEXT NOT NULL DEFAULT '',
+  guruh_id      INTEGER REFERENCES guruhlar(id) ON DELETE SET NULL,
+  fan_nomi      TEXT NOT NULL DEFAULT '',
+  guruh_nomi    TEXT NOT NULL DEFAULT '',
+  holat         TEXT NOT NULL DEFAULT 'yangi' CHECK (holat IN ('yangi','aloqada','yozildi','rad')),
+  izoh          TEXT NOT NULL DEFAULT '',
+  oquvchi_id    INTEGER REFERENCES oquvchilar(id) ON DELETE SET NULL,
+  yaratilgan    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_lidlar_holat ON lidlar(holat, yaratilgan DESC);
+CREATE INDEX IF NOT EXISTS idx_lidlar_guruh ON lidlar(guruh_id);
+
+-- Vakansiyalar: o'qituvchi ish o'rinlari (admin yaratadi, bot ko'rsatadi)
+CREATE TABLE IF NOT EXISTS vakansiyalar (
+  id          SERIAL PRIMARY KEY,
+  nomi        TEXT NOT NULL,
+  fan_id      INTEGER REFERENCES fanlar(id) ON DELETE SET NULL,
+  tavsif      TEXT NOT NULL DEFAULT '',
+  talablar    TEXT NOT NULL DEFAULT '',
+  maosh       TEXT NOT NULL DEFAULT '',
+  faol        BOOLEAN NOT NULL DEFAULT TRUE,
+  yaratilgan  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Nomzodlar: vakansiyaga botdan kelgan arizalar (rezyume — Telegram file_id; admin panel uni bot orqali yuklab oladi)
+CREATE TABLE IF NOT EXISTS nomzodlar (
+  id             SERIAL PRIMARY KEY,
+  vakansiya_id   INTEGER REFERENCES vakansiyalar(id) ON DELETE SET NULL,
+  vakansiya_nomi TEXT NOT NULL DEFAULT '',
+  ism            TEXT NOT NULL,
+  telefon        TEXT NOT NULL,
+  tajriba        TEXT NOT NULL DEFAULT '',
+  telegram_id    BIGINT,
+  username       TEXT NOT NULL DEFAULT '',
+  rezyume_file_id TEXT,
+  rezyume_nomi   TEXT NOT NULL DEFAULT '',
+  holat          TEXT NOT NULL DEFAULT 'yangi' CHECK (holat IN ('yangi','korildi','suhbat','qabul','rad')),
+  izoh           TEXT NOT NULL DEFAULT '',
+  yaratilgan     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_nomzodlar_holat ON nomzodlar(holat, yaratilgan DESC);
+CREATE INDEX IF NOT EXISTS idx_nomzodlar_vakansiya ON nomzodlar(vakansiya_id);

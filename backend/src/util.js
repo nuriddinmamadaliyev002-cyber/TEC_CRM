@@ -4,7 +4,9 @@ const int = v => (Number.isInteger(Number(v)) && Number(v) > 0 ? Number(v) : nul
 const num = v => (v !== '' && v != null && Number.isFinite(Number(v)) ? Number(v) : null);
 const tgId = v => { const s = String(v == null ? '' : v).trim(); return /^\d{1,15}$/.test(s) && Number(s) > 0 ? s : null; };
 const date = v => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null);
+// Telefon: bo'sh joy, qavs, chiziqchalar olib tashlanadi; 9–15 raqam (ixtiyoriy boshidagi +). Noto'g'ri bo'lsa null.
+const phone = v => { const s = String(v == null ? '' : v).replace(/[\s()\-.]/g, ''); return /^\+?\d{9,15}$/.test(s) ? s : null; };
 const bad = (res, msg, code = 400) => res.status(code).json({ ok: false, error: msg });
 // async handler: xatoni Express error handler'ga uzatadi
 const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
-module.exports = { str, int, num, tgId, date, bad, wrap };
+module.exports = { str, int, num, tgId, phone, date, bad, wrap };

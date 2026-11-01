@@ -1,5 +1,5 @@
-// Panel API'lari uchun: superadmin yoki FAOL kurs admin.
-// Kurs admin o'chirilgan/nofaol qilingan bo'lsa, eski token ham darhol o'tmaydi.
+// Panel API'lari uchun: superadmin yoki FAOL admin.
+// Admin o'chirilgan/nofaol qilingan bo'lsa, eski token ham darhol o'tmaydi.
 const pool = require('../db');
 const { requireAuth } = require('./jwt');
 

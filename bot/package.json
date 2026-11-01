@@ -1,7 +1,7 @@
 {
   "name": "today-education-bot",
   "version": "1.0.0",
-  "description": "Today Education Centre — kurs adminlari uchun kirish boti",
+  "description": "Today Education Centre — kursga yozilish va vakansiya arizalari boti",
   "main": "bot.js",
   "scripts": { "start": "node bot.js" },
   "dependencies": {

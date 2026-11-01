@@ -1,9 +1,9 @@
-// ─── Kurs admin paneli API (superadmin ham foydalana oladi) ─────────────────
-//  /fanlar  /oqituvchilar  /oquvchilar  /guruhlar  /tolovlar  /stats
+// ─── Admin paneli API (superadmin ham foydalana oladi) ─────────────────
+//  /fanlar  /oqituvchilar  /oquvchilar  /guruhlar (+davomat)  /tolovlar  /lidlar  /vakansiyalar  /nomzodlar  /stats
 const { Router } = require('express');
 const pool = require('../db');
 const panelAuth = require('../middleware/panelAuth');
-const { str, int, num, tgId, date, bad, wrap } = require('../util');
+const { str, int, num, date, bad, wrap } = require('../util');
 
 const router = Router();
 router.use(panelAuth);
@@ -18,7 +18,6 @@ function realDate(v) {
 const tzParts = () => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent', year: 'numeric', month: '2-digit', day: '2-digit' })
   .formatToParts(new Date()).map(p => [p.type, p.value]));
 const todayISO = () => { const p = tzParts(); return `${p.year}-${p.month}-${p.day}`; };
-const tgOrNull = v => (v === '' || v == null ? null : tgId(v));
 
 // ═══ FANLAR (o'quv markazda o'tiladigan fanlar nomenklaturasi) ═══════════════
 router.get('/fanlar', wrap(async (req, res) => {
@@ -59,29 +58,22 @@ function person(table, withFan) {
   const r = Router();
   r.get('/', wrap(async (req, res) => {
     const q = withFan
-      ? await pool.query(`SELECT t.*, t.telegram_id::text AS telegram_id, f.nomi AS fan_nomi
-                            FROM oqituvchilar t LEFT JOIN fanlar f ON f.id=t.fan_id ORDER BY t.id DESC`)
-      : await pool.query(`SELECT *, telegram_id::text AS telegram_id FROM ${table} ORDER BY id DESC`);
+      ? await pool.query(`SELECT t.*, f.nomi AS fan_nomi FROM oqituvchilar t LEFT JOIN fanlar f ON f.id=t.fan_id ORDER BY t.id DESC`)
+      : await pool.query(`SELECT * FROM ${table} ORDER BY id DESC`);
     res.json({ ok: true, items: q.rows });
   }));
   const body = b => {
     const ism = str(b.ism, 100); if (!ism) return { err: 'Ism majburiy' };
-    const tg = tgOrNull(b.telegram_id); if (b.telegram_id && !tg) return { err: "Telegram ID noto'g'ri" };
     const fan = withFan ? int(b.fan_id) : null;
     if (withFan && !fan) return { err: 'Fanni tanlang' }; // fansiz o'qituvchini guruhga biriktirib bo'lmaydi
-    return { v: [ism, str(b.familiya, 100), str(b.telefon, 30), tg, b.faol !== false, ...(withFan ? [fan] : [])] };
+    return { v: [ism, str(b.familiya, 100), str(b.telefon, 30), b.faol !== false, ...(withFan ? [fan] : [])] };
   };
-  // O'qituvchi va o'quvchi Telegram ID'si orqali o'z paneliga kiradi — shuning uchun jadval ichida takrorlanmasligi kerak
-  const dupTg = async (tg, id) => !!tg &&
-    (await pool.query(`SELECT 1 FROM ${table} WHERE telegram_id=$1 AND id<>$2`, [tg, id])).rowCount > 0;
-  const DUP = table === 'oqituvchilar' ? "Bu Telegram ID boshqa o'qituvchiga biriktirilgan" : "Bu Telegram ID boshqa o'quvchiga biriktirilgan";
   // O'quvchi nofaol bo'lgan sanani yuritamiz: shu oydan boshlab to'lovlar reestrida ko'rinmaydi (oldingi oylarda ko'rinadi)
   const syncNofaol = id => withFan ? null : pool.query(
     `UPDATE oquvchilar SET nofaol_sana = CASE WHEN faol THEN NULL ELSE COALESCE(nofaol_sana, (NOW() AT TIME ZONE 'Asia/Tashkent')::date) END WHERE id=$1`, [id]);
   r.post('/', wrap(async (req, res) => {
     const { err, v } = body(req.body); if (err) return bad(res, err);
-    if (await dupTg(v[3], 0)) return bad(res, DUP, 409);
-    const cols = 'ism,familiya,telefon,telegram_id,faol' + (withFan ? ',fan_id' : '');
+    const cols = 'ism,familiya,telefon,faol' + (withFan ? ',fan_id' : '');
     const ph = v.map((_, i) => '$' + (i + 1)).join(',');
     try {
       const q = await pool.query(`INSERT INTO ${table}(${cols}) VALUES(${ph}) RETURNING id`, v);
@@ -92,19 +84,18 @@ function person(table, withFan) {
   r.put('/:id', wrap(async (req, res) => {
     const { err, v } = body(req.body); if (err) return bad(res, err);
     const id = int(req.params.id) || 0;
-    if (await dupTg(v[3], id)) return bad(res, DUP, 409);
     // Fan o'zgarsa, o'qituvchi boshqa fan guruhlarida qolib ketmasin
-    if (withFan && (await pool.query('SELECT 1 FROM guruhlar WHERE oqituvchi_id=$1 AND fan_id<>$2 LIMIT 1', [id, v[5]])).rowCount)
+    if (withFan && (await pool.query('SELECT 1 FROM guruhlar WHERE oqituvchi_id=$1 AND fan_id<>$2 LIMIT 1', [id, v[4]])).rowCount)
       return bad(res, "Bu o'qituvchi boshqa fan guruhlarida dars beradi. Avval o'sha guruhlarni o'zgartiring", 409);
-    const sets = 'ism=$1,familiya=$2,telefon=$3,telegram_id=$4,faol=$5' + (withFan ? ',fan_id=$6' : '');
+    const sets = 'ism=$1,familiya=$2,telefon=$3,faol=$4' + (withFan ? ',fan_id=$5' : '');
     try {
-      const q = await pool.query(`UPDATE ${table} SET ${sets} WHERE id=$${v.length + 1}`, [...v, req.params.id]);
-      if (q.rowCount) await syncNofaol(req.params.id);
+      const q = await pool.query(`UPDATE ${table} SET ${sets} WHERE id=$${v.length + 1}`, [...v, id]);
+      if (q.rowCount) await syncNofaol(id);
       q.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
     } catch (e) { if (e.code === '23503') return bad(res, 'Fan topilmadi'); throw e; }
   }));
   r.delete('/:id', wrap(async (req, res) => {
-    const q = await pool.query(`DELETE FROM ${table} WHERE id=$1`, [req.params.id]);
+    const q = await pool.query(`DELETE FROM ${table} WHERE id=$1`, [int(req.params.id) || 0]);
     q.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
   }));
   return r;
@@ -205,6 +196,167 @@ router.post('/guruhlar/:id/oquvchilar', wrap(async (req, res) => {
 router.delete('/guruhlar/:id/oquvchilar/:oid', wrap(async (req, res) => {
   const r = await pool.query('DELETE FROM guruh_oquvchilari WHERE guruh_id=$1 AND oquvchi_id=$2', [req.params.id, req.params.oid]);
   r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+}));
+
+// ═══ DAVOMAT (admin belgilaydi) ═════════════════════════════════════════════
+const DAVOMAT_HOLAT = ['keldi', 'kelmadi', 'sababli'];
+// Tanlangan kun davomati: guruhdagi har bir o'quvchi + belgilangan holat (yoki null)
+router.get('/guruhlar/:id/davomat', wrap(async (req, res) => {
+  const gid = int(req.params.id); if (!gid) return bad(res, "Noto'g'ri guruh");
+  const sana = req.query.sana ? realDate(req.query.sana) : todayISO();
+  if (!sana) return bad(res, "Sana noto'g'ri");
+  if (!(await pool.query('SELECT 1 FROM guruhlar WHERE id=$1', [gid])).rowCount) return bad(res, 'Guruh topilmadi', 404);
+  const r = await pool.query(`
+    SELECT o.id, o.ism, o.familiya, o.telefon, d.holat
+      FROM guruh_oquvchilari x
+      JOIN oquvchilar o ON o.id=x.oquvchi_id
+      LEFT JOIN davomat d ON d.guruh_id=x.guruh_id AND d.oquvchi_id=o.id AND d.sana=$2::date
+     WHERE x.guruh_id=$1 ORDER BY o.familiya, o.ism`, [gid, sana]);
+  res.json({ ok: true, sana, items: r.rows });
+}));
+// Davomatni saqlash (qayta saqlansa yangilanadi). Guruhda bo'lmagan o'quvchi e'tiborga olinmaydi.
+router.put('/guruhlar/:id/davomat', wrap(async (req, res) => {
+  const gid = int(req.params.id); if (!gid) return bad(res, "Noto'g'ri guruh");
+  const sana = realDate((req.body || {}).sana);
+  if (!sana) return bad(res, "Sana noto'g'ri");
+  if (sana > todayISO()) return bad(res, "Kelajak sanasi uchun davomat belgilab bo'lmaydi");
+  const items = (req.body || {}).items;
+  if (!Array.isArray(items) || !items.length) return bad(res, "Davomat bo'sh");
+  if (items.length > 500) return bad(res, "Juda ko'p yozuv");
+  if (!(await pool.query('SELECT 1 FROM guruhlar WHERE id=$1', [gid])).rowCount) return bad(res, 'Guruh topilmadi', 404);
+  const ids = [], hol = [], seen = new Set();
+  for (const it of items) {
+    const oid = int(it && it.oquvchi_id);
+    if (!oid || !DAVOMAT_HOLAT.includes(it.holat)) return bad(res, "Davomat ma'lumoti noto'g'ri");
+    if (seen.has(oid)) continue; seen.add(oid);
+    ids.push(oid); hol.push(it.holat);
+  }
+  const r = await pool.query(`
+    INSERT INTO davomat(guruh_id, oquvchi_id, sana, holat)
+    SELECT $1::int, x.oid, $2::date, x.h
+      FROM unnest($3::int[], $4::text[]) AS x(oid, h)
+     WHERE EXISTS (SELECT 1 FROM guruh_oquvchilari go WHERE go.guruh_id=$1::int AND go.oquvchi_id=x.oid)
+    ON CONFLICT (guruh_id, oquvchi_id, sana) DO UPDATE SET holat=EXCLUDED.holat, yangilangan=NOW()`,
+    [gid, sana, ids, hol]);
+  res.json({ ok: true, saqlandi: r.rowCount });
+}));
+
+// ═══ LIDLAR (botdan kelgan «kursga yozilish» arizalari) ══════════════════════
+const LID_HOLAT = ['yangi', 'aloqada', 'yozildi', 'rad'];
+router.get('/lidlar', wrap(async (req, res) => {
+  const r = await pool.query(`
+    SELECT l.id, l.ism, l.telefon, l.username, l.telegram_id::text AS telegram_id, l.holat, l.izoh, l.yaratilgan,
+           l.fan_nomi, l.guruh_nomi, l.guruh_id, l.oquvchi_id,
+           g.jadval, g.oylik_narx::float AS oylik_narx, TRIM(CONCAT(q.familiya, ' ', q.ism)) AS oqituvchi_nomi
+      FROM lidlar l
+      LEFT JOIN guruhlar g ON g.id=l.guruh_id
+      LEFT JOIN oqituvchilar q ON q.id=g.oqituvchi_id
+     ORDER BY (l.holat='yangi') DESC, l.id DESC LIMIT 1000`);
+  res.json({ ok: true, items: r.rows });
+}));
+router.put('/lidlar/:id', wrap(async (req, res) => {
+  const b = req.body || {}, id = int(req.params.id) || 0;
+  if (!LID_HOLAT.includes(b.holat)) return bad(res, "Holat noto'g'ri");
+  const r = await pool.query('UPDATE lidlar SET holat=$1, izoh=$2 WHERE id=$3', [b.holat, str(b.izoh, 2000), id]);
+  r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+}));
+router.delete('/lidlar/:id', wrap(async (req, res) => {
+  const r = await pool.query('DELETE FROM lidlar WHERE id=$1', [int(req.params.id) || 0]);
+  r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+}));
+// Lidni o'quvchiga aylantirish: yangi o'quvchi yaratiladi va (guruh hali bor bo'lsa) shu guruhga qo'shiladi. Lid «Yozildi» bo'ladi.
+router.post('/lidlar/:id/oquvchi', wrap(async (req, res) => {
+  const id = int(req.params.id) || 0;
+  const c = await pool.connect();
+  try {
+    await c.query('BEGIN');
+    const l = await c.query('SELECT * FROM lidlar WHERE id=$1 FOR UPDATE', [id]);
+    if (!l.rowCount) { await c.query('ROLLBACK'); return bad(res, 'Topilmadi', 404); }
+    const lid = l.rows[0];
+    if (lid.oquvchi_id) { await c.query('ROLLBACK'); return bad(res, "Bu lid allaqachon o'quvchiga aylantirilgan", 409); }
+    if (lid.guruh_id) { // guruhni qulflab, joy borligini tekshiramiz
+      const g = await c.query('SELECT max_oquvchi FROM guruhlar WHERE id=$1 FOR UPDATE', [lid.guruh_id]);
+      const n = await c.query('SELECT COUNT(*)::int AS n FROM guruh_oquvchilari WHERE guruh_id=$1', [lid.guruh_id]);
+      if (g.rowCount && n.rows[0].n >= g.rows[0].max_oquvchi) { await c.query('ROLLBACK'); return bad(res, "Guruh to'lgan", 409); }
+    }
+    const parts = lid.ism.split(/\s+/);               // «Ali Valiyev» → ism=Ali, familiya=Valiyev
+    const o = await c.query('INSERT INTO oquvchilar(ism,familiya,telefon) VALUES($1,$2,$3) RETURNING id',
+      [parts[0], parts.slice(1).join(' '), lid.telefon]);
+    if (lid.guruh_id && (await c.query('SELECT 1 FROM guruhlar WHERE id=$1', [lid.guruh_id])).rowCount)
+      await c.query('INSERT INTO guruh_oquvchilari(guruh_id,oquvchi_id) VALUES($1,$2)', [lid.guruh_id, o.rows[0].id]);
+    await c.query("UPDATE lidlar SET holat='yozildi', oquvchi_id=$2 WHERE id=$1", [id, o.rows[0].id]);
+    await c.query('COMMIT');
+    res.json({ ok: true, oquvchi_id: o.rows[0].id, guruhga_qoshildi: !!lid.guruh_id });
+  } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; }
+  finally { c.release(); }
+}));
+
+// ═══ VAKANSIYALAR (o'qituvchi ish o'rinlari) ═════════════════════════════════
+router.get('/vakansiyalar', wrap(async (req, res) => {
+  const r = await pool.query(`
+    SELECT v.*, f.nomi AS fan_nomi, (SELECT COUNT(*)::int FROM nomzodlar n WHERE n.vakansiya_id=v.id) AS nomzodlar_soni
+      FROM vakansiyalar v LEFT JOIN fanlar f ON f.id=v.fan_id ORDER BY v.id DESC`);
+  res.json({ ok: true, items: r.rows });
+}));
+function vakBody(b) {
+  const nomi = str(b.nomi, 200); if (!nomi) return { err: 'Vakansiya nomi majburiy' };
+  return { v: [nomi, int(b.fan_id), str(b.tavsif, 3000), str(b.talablar, 3000), str(b.maosh, 200), b.faol !== false] };
+}
+router.post('/vakansiyalar', wrap(async (req, res) => {
+  const { err, v } = vakBody(req.body); if (err) return bad(res, err);
+  try {
+    const r = await pool.query('INSERT INTO vakansiyalar(nomi,fan_id,tavsif,talablar,maosh,faol) VALUES($1,$2,$3,$4,$5,$6) RETURNING id', v);
+    res.json({ ok: true, id: r.rows[0].id });
+  } catch (e) { if (e.code === '23503') return bad(res, 'Fan topilmadi'); throw e; }
+}));
+router.put('/vakansiyalar/:id', wrap(async (req, res) => {
+  const { err, v } = vakBody(req.body); if (err) return bad(res, err);
+  try {
+    const r = await pool.query('UPDATE vakansiyalar SET nomi=$1,fan_id=$2,tavsif=$3,talablar=$4,maosh=$5,faol=$6 WHERE id=$7', [...v, int(req.params.id) || 0]);
+    r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+  } catch (e) { if (e.code === '23503') return bad(res, 'Fan topilmadi'); throw e; }
+}));
+router.delete('/vakansiyalar/:id', wrap(async (req, res) => { // nomzodlar qoladi (vakansiya nomi nusxasi bilan)
+  const r = await pool.query('DELETE FROM vakansiyalar WHERE id=$1', [int(req.params.id) || 0]);
+  r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+}));
+
+// ═══ NOMZODLAR (vakansiyaga botdan kelgan arizalar) ══════════════════════════
+const NOMZOD_HOLAT = ['yangi', 'korildi', 'suhbat', 'qabul', 'rad'];
+router.get('/nomzodlar', wrap(async (req, res) => {
+  const r = await pool.query(`
+    SELECT id, vakansiya_id, vakansiya_nomi, ism, telefon, tajriba, username, telegram_id::text AS telegram_id,
+           (rezyume_file_id IS NOT NULL) AS rezyume_bor, rezyume_nomi, holat, izoh, yaratilgan
+      FROM nomzodlar ORDER BY (holat='yangi') DESC, id DESC LIMIT 1000`);
+  res.json({ ok: true, items: r.rows });
+}));
+router.put('/nomzodlar/:id', wrap(async (req, res) => {
+  const b = req.body || {};
+  if (!NOMZOD_HOLAT.includes(b.holat)) return bad(res, "Holat noto'g'ri");
+  const r = await pool.query('UPDATE nomzodlar SET holat=$1, izoh=$2 WHERE id=$3', [b.holat, str(b.izoh, 2000), int(req.params.id) || 0]);
+  r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+}));
+router.delete('/nomzodlar/:id', wrap(async (req, res) => {
+  const r = await pool.query('DELETE FROM nomzodlar WHERE id=$1', [int(req.params.id) || 0]);
+  r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+}));
+// Rezyume: faylni Telegram saqlaydi (file_id). Bot tokeni bilan yuklab olib, adminga beramiz (Telegram limiti — 20 MB).
+router.get('/nomzodlar/:id/rezyume', wrap(async (req, res) => {
+  const r = await pool.query('SELECT rezyume_file_id, rezyume_nomi FROM nomzodlar WHERE id=$1', [int(req.params.id) || 0]);
+  if (!r.rowCount || !r.rows[0].rezyume_file_id) return bad(res, 'Rezyume topilmadi', 404);
+  const tok = process.env.KURS_BOT_TOKEN;
+  if (!tok) return bad(res, 'Bot sozlanmagan (KURS_BOT_TOKEN)', 500);
+  try {
+    const g = await (await fetch(`https://api.telegram.org/bot${tok}/getFile?file_id=${encodeURIComponent(r.rows[0].rezyume_file_id)}`,
+      { signal: AbortSignal.timeout(10000) })).json();
+    if (!g.ok || !g.result || !g.result.file_path) return bad(res, "Rezyumeni Telegramdan olib bo'lmadi", 502);
+    const f = await fetch(`https://api.telegram.org/file/bot${tok}/${g.result.file_path}`, { signal: AbortSignal.timeout(30000) });
+    if (!f.ok) return bad(res, "Rezyumeni Telegramdan olib bo'lmadi", 502);
+    const nom = (r.rows[0].rezyume_nomi || 'rezyume').replace(/[^\w.\- ]+/g, '_').slice(0, 100) || 'rezyume';
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${nom}"`);
+    res.send(Buffer.from(await f.arrayBuffer()));
+  } catch (e) { console.error('rezyume:', e.message); bad(res, "Rezyumeni olib bo'lmadi", 502); }
 }));
 
 // ═══ TO'LOVLAR ═══════════════════════════════════════════════════════════════
@@ -389,7 +541,10 @@ router.get('/stats', wrap(async (req, res) => {
       (SELECT COALESCE(SUM(summa),0)::float FROM tolovlar
         WHERE date_trunc('month',sana)=date_trunc('month',CURRENT_DATE)) AS oy_tushum,
       (SELECT COALESCE(SUM(summa),0)::float FROM tolovlar) AS jami_tushum,
-      (SELECT COUNT(*)::int FROM kurs_adminlar WHERE faol)  AS kurs_adminlar`);
+      (SELECT COUNT(*)::int FROM kurs_adminlar WHERE faol)  AS kurs_adminlar,
+      (SELECT COUNT(*)::int FROM lidlar WHERE holat='yangi')    AS yangi_lidlar,
+      (SELECT COUNT(*)::int FROM nomzodlar WHERE holat='yangi') AS yangi_nomzodlar,
+      (SELECT COUNT(*)::int FROM vakansiyalar WHERE faol)       AS vakansiyalar`);
   res.json({ ok: true, stats: r.rows[0] });
 }));
 

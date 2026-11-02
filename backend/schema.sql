@@ -245,3 +245,15 @@ ALTER TABLE oquvchilar ADD COLUMN IF NOT EXISTS nofaol_sabab TEXT NOT NULL DEFAU
 
 -- ═══ Lidlar: yashash manzili (migratsiya: qayta ishga tushirish xavfsiz) ═══
 ALTER TABLE lidlar ADD COLUMN IF NOT EXISTS manzil TEXT NOT NULL DEFAULT '';
+
+-- ═══ Yuzni tanish orqali davomat (migratsiya: qayta ishga tushirish xavfsiz) ═══
+-- Faqat yuz VEKTORI (128 raqam) saqlanadi — rasm saqlanmaydi. Vektorni brauzer (face-api) hisoblaydi, tanish ham brauzerda bajariladi.
+-- Biometrik ma'lumot: o'quvchi (yoki ota-onasi) roziligi shart — rozilik vaqti oquvchilar.yuz_rozilik da saqlanadi.
+ALTER TABLE oquvchilar ADD COLUMN IF NOT EXISTS yuz_rozilik TIMESTAMPTZ;
+CREATE TABLE IF NOT EXISTS oquvchi_yuz (
+  id          SERIAL PRIMARY KEY,
+  oquvchi_id  INTEGER NOT NULL REFERENCES oquvchilar(id) ON DELETE CASCADE,
+  vektor      REAL[]  NOT NULL CHECK (array_length(vektor, 1) = 128),
+  yaratilgan  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_oquvchi_yuz_oquvchi ON oquvchi_yuz(oquvchi_id);

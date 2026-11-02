@@ -66,6 +66,16 @@ Menyuda yangi (ko'rilmagan) lid va nomzodlar soni ko'rsatiladi. Bot backend bila
 - **Davomat** — admin panelda: Guruhlar → «Davomat» → sana → har bir o'quvchi uchun Keldi / Kelmadi / Sababli (kelajak sanasi mumkin emas).
 - To'lovlar oylik reestr ko'rinishida yuritiladi, Excel'ga yuklanadi.
 
+## Yuzni tanib davomat (kamera)
+Admin telefon/planshet (orqa kamera) yoki kompyuter kamerasi bilan guruhni suratga oladi, tizim taniganlarni ro'yxatda **«Keldi»** qilib qo'yadi.
+Admin natijani ko'rib, odatdagidek **«Saqlash»** ni bosadi (kelmadi / sababli ni qo'lda belgilaydi).
+- **Hammasi brauzerda**: tanish `face-api` (`web/vendor/face-api/`, ~14 MB, bir marta yuklanadi) bilan bajariladi. Serverga faqat **128 raqamli yuz vektori** ketadi (`oquvchi_yuz`), rasm saqlanmaydi.
+- **Yuzni ro'yxatga olish:** (a) yangi o'quvchi qo'shilgach «Yuzini hozir olasizmi?», yoki o'quvchilar ro'yxatidagi **📷 Yuz** tugmasi (3 ta namuna); (b) guruh davomatida **📷 Kamera bilan → Yuzlarni o'rgatish**: kadr qotiriladi, har bir yuz uchun o'quvchi tanlanadi (butun guruhni bir darsda o'rgatish mumkin).
+- **Biometrik ma'lumot:** har bir o'quvchi uchun rozilik belgisi majburiy (server `oquvchilar.yuz_rozilik` ga vaqtni yozadi). «Yuzni o'chirish» vektorlar va rozilikni butunlay o'chiradi.
+- Kamera uchun sayt **HTTPS** da bo'lishi shart (localhost bundan mustasno). iPhone'da Safari, Android'da Chrome tavsiya etiladi; Telegram ichki brauzerida kamera bloklanishi mumkin.
+- Aniqlik: 10–15 o'quvchi, 3–4 m gacha masofa, yaxshi yorug'lik. Noto'g'ri tanilganni chipdagi **×** bilan olib tashlash mumkin. `web/js/yuz.js` boshidagi `MATCH` (0.5) — qat'iylik chegarasi.
+- API: `POST|DELETE /api/oquvchilar/:id/yuz`, `GET /api/guruhlar/:id/yuzlar`.
+
 ## Eski bazadan o'tish
 `schema.sql` har ishga tushganda avtomatik migratsiya qiladi (qayta ishga tushirish xavfsiz):
 - **Filiallar:** `filiallar` jadvali yaratiladi va barcha mavjud ma'lumot (adminlar, fanlar, o'qituvchilar, o'quvchilar, guruhlar, lidlar,

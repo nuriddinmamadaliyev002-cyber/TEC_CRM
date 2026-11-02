@@ -275,6 +275,22 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
   // boshqa filial obyektlariga murojaat → «topilmadi»
   r = await call('GET', `/guruhlar/${GID}/oquvchilar`, null, KB); t('begona guruh o\'quvchilari → 404', r.s === 404, r);
   r = await call('GET', `/guruhlar/${GID}/davomat?sana=${YDAY}`, null, KB); t('begona guruh davomati o\'qish → 404', r.s === 404, r);
+  // — YUZ vektorlari (yuzni tanib davomat)
+  { const vec = k => Array.from({ length: 128 }, (_, i) => Math.sin(i * k) / 4);
+    r = await call('POST', `/oquvchilar/${ids[0]}/yuz`, { vektorlar: [vec(1)] }, KA); t('yuz: rozilik yo\'q → 400', r.s === 400, r);
+    r = await call('POST', `/oquvchilar/${ids[0]}/yuz`, { vektorlar: [[1, 2, 3]], rozilik: true }, KA); t('yuz: noto\'g\'ri vektor → 400', r.s === 400, r);
+    r = await call('POST', `/oquvchilar/${ids[0]}/yuz`, { vektorlar: [vec(1), vec(2)], rozilik: true }, KA); t('yuz saqlash', r.s === 200 && r.d.yuz_soni === 2, r);
+    r = await call('POST', `/oquvchilar/${ids[0]}/yuz`, { vektorlar: [vec(3)] }, KA); t('yuz: rozilik bir marta berilgan — qayta so\'ralmaydi', r.s === 200 && r.d.yuz_soni === 3, r);
+    for (let i = 0; i < 4; i++) r = await call('POST', `/oquvchilar/${ids[0]}/yuz`, { vektorlar: [vec(4 + i), vec(8 + i), vec(12 + i)] }, KA);
+    t('yuz: namunalar soni 10 dan oshmaydi', r.s === 200 && r.d.yuz_soni === 10, r);
+    r = await call('GET', '/oquvchilar', null, KA); t('ro\'yxatda yuz_soni', r.d.items.find(o => o.id === ids[0]).yuz_soni === 10 && r.d.items.find(o => o.id === ids[2]).yuz_soni === 0, r.d.items.slice(0, 2));
+    r = await call('GET', `/guruhlar/${GID}/yuzlar`, null, KA); t('guruh yuzlari: faqat yuzi bor o\'quvchilar', r.s === 200 && r.d.items.length === 1 && r.d.items[0].oquvchi_id === ids[0] && r.d.items[0].vektorlar.length === 10 && r.d.items[0].vektorlar[0].length === 128, r.d);
+    r = await call('POST', `/oquvchilar/${ids[0]}/yuz`, { vektorlar: [vec(1)] }, KB); t('begona filial o\'quvchisiga yuz yozish → 404', r.s === 404, r);
+    r = await call('GET', `/guruhlar/${GID}/yuzlar`, null, KB); t('begona guruh yuzlari → 404', r.s === 404, r);
+    r = await call('DELETE', `/oquvchilar/${ids[0]}/yuz`, null, KB); t('begona filial yuzini o\'chirish → 404', r.s === 404, r);
+    r = await call('DELETE', `/oquvchilar/${ids[0]}/yuz`, null, KA); t('yuzni o\'chirish', r.s === 200, r);
+    r = await call('GET', `/guruhlar/${GID}/yuzlar`, null, KA); t('o\'chirilgandan so\'ng guruh yuzlari bo\'sh', r.s === 200 && r.d.items.length === 0, r);
+    r = await call('POST', `/oquvchilar/${ids[0]}/yuz`, { vektorlar: [vec(1)] }, KA); t('rozilik o\'chirilgach, yana rozilik so\'raladi', r.s === 400, r); }
   r = await call('PUT', `/guruhlar/${GID}/davomat`, { sana: YDAY, items: [{ oquvchi_id: ids[0], holat: 'keldi' }] }, KB); t('begona guruhga davomat yozish → 404', r.s === 404, r);
   r = await call('POST', `/guruhlar/${GID}/oquvchilar`, { oquvchi_id: ids[0] }, KB); t('begona guruhga o\'quvchi qo\'shish → 404', r.s === 404, r);
   r = await call('DELETE', `/guruhlar/${GID}/oquvchilar/${ids[0]}`, null, KB); t('begona guruhdan o\'quvchi chiqarish → 404', r.s === 404, r);

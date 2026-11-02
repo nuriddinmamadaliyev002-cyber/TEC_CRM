@@ -109,12 +109,13 @@
     const COLS = {
       faol: [['FI', x => `<b>${esc(full(x))}</b>`], ['Telefon', x => esc(x.telefon) || '—'], ['Manzil', x => esc(x.manzil) || '—'],
         ['Guruh', x => x.guruhlar.length ? gl(x, g => `<b>${esc(g.guruh_nomi)}</b> <span class="muted">${esc(g.fan_nomi)}</span>`) : '<span class="badge off">Guruhsiz</span>'],
-        ["O'qituvchi", x => gl(x, g => esc(g.oqituvchi_nomi) || '—')], ["O'qishni boshlagan", x => gl(x, g => IC.fdate(g.boshlagan))]],
+        ["O'qituvchi", x => gl(x, g => esc(g.oqituvchi_nomi) || '—')], ["O'qishni boshlagan", x => gl(x, g => IC.fdate(g.boshlagan))],
+        ['Yuz', x => x.yuz_soni ? '<span class="badge ok">✓ Olingan</span>' : '<span class="badge off">Yo\'q</span>']],
     };
     COLS.nofaol = [...COLS.faol, ["To'xtatgan sana", x => IC.fdate(x.nofaol_sana)],
       ["To'xtatish sababi", x => `<div style="white-space:pre-wrap;max-width:260px">${esc(x.nofaol_sabab) || '—'}</div>`]];
     const actions = x => x.faol
-      ? `<td class="act"><button class="btn sm" data-e="${x.id}">Tahrirlash</button> <button class="btn sm" data-n="${x.id}">Nofaol qilish</button> <button class="btn sm dng" data-d="${x.id}">O'chirish</button></td>`
+      ? `<td class="act"><button class="btn sm" data-y="${x.id}" title="Kamera bilan davomat uchun yuzni ro'yxatga olish">📷 Yuz</button> <button class="btn sm" data-e="${x.id}">Tahrirlash</button> <button class="btn sm" data-n="${x.id}">Nofaol qilish</button> <button class="btn sm dng" data-d="${x.id}">O'chirish</button></td>`
       : `<td class="act"><button class="btn sm pri" data-a="${x.id}">Faollashtirish</button> <button class="btn sm" data-e="${x.id}">Tahrirlash</button> <button class="btn sm dng" data-d="${x.id}">O'chirish</button></td>`;
 
     const draw = () => {
@@ -136,7 +137,14 @@
       title: x ? "O'quvchini tahrirlash" : "Yangi o'quvchi", values: x || {},
       fields: [{ k: 'familiya', label: 'Familiya', req: true }, { k: 'ism', label: 'Ism', req: true }, { k: 'telefon', label: 'Telefon', type: 'tel' },
         { k: 'manzil', label: 'Yashash manzili', full: true, autocomplete: 'off' }],
-      onSubmit: async v => { x ? await IC.api('PUT', '/oquvchilar/' + x.id, v) : await IC.api('POST', '/oquvchilar', v); await load(); IC.toast('Saqlandi'); },
+      onSubmit: async v => {
+        let nid = null;
+        if (x) await IC.api('PUT', '/oquvchilar/' + x.id, v); else nid = (await IC.api('POST', '/oquvchilar', v)).id;
+        await load(); IC.toast('Saqlandi');
+        // Yangi o'quvchi: kamera bilan davomat uchun yuzini hoziroq olish taklif qilinadi (ixtiyoriy)
+        if (nid && await IC.ask("Yuzini hozir olasizmi? (kamera bilan davomat uchun)", { yes: 'Ha, olish', no: 'Keyinroq' }))
+          YUZ.enroll({ id: nid, ism: v.ism, familiya: v.familiya, yuz_soni: 0 }, { onDone: load });
+      },
     });
     const deactivate = x => IC.formModal({
       title: `${full(x)} — o'qishni to'xtatish`, submitText: 'Nofaol qilish',
@@ -152,7 +160,8 @@
     view.querySelector('.subtabs').onclick = e => { const b = e.target.closest('.subtab'); if (b) { OQ.tab = b.dataset.t; draw(); } };
     rows.onclick = async e => {
       const b = e.target.closest('button'); if (!b) return;
-      const x = items.find(i => String(i.id) === (b.dataset.e || b.dataset.n || b.dataset.a || b.dataset.d)); if (!x) return;
+      const x = items.find(i => String(i.id) === (b.dataset.e || b.dataset.n || b.dataset.a || b.dataset.d || b.dataset.y)); if (!x) return;
+      if (b.dataset.y) return YUZ.enroll(x, { onDone: load });
       if (b.dataset.e) return edit(x);
       if (b.dataset.n) return deactivate(x);
       try {
@@ -254,7 +263,7 @@
         <button class="btn" id="ex" type="button" aria-expanded="false">+ Qo'shimcha dars</button>
       </div>
       <div class="att-ex hidden" id="exr"><div class="fld" style="margin:0;flex:1"><label for="dt">Qo'shimcha dars sanasi</label><input type="date" id="dt" max="${today}"></div></div>
-      <div style="margin-bottom:10px"><button class="btn sm" id="all" type="button">Hammasi keldi</button></div>
+      <div style="margin-bottom:10px"><button class="btn sm" id="all" type="button">Hammasi keldi</button> <button class="btn sm" id="cm" type="button">📷 Kamera bilan</button></div>
       <div id="lst"></div><div class="err" role="alert"></div>
       <div class="mact"><button class="btn" id="x" type="button">Yopish</button><button class="btn pri" id="save" type="button">Saqlash</button></div></div>`;
     document.body.appendChild(ov);
@@ -312,6 +321,16 @@
     };
     $('#lst').onchange = () => { dirty = true; };
     $('#all').onclick = () => { $('#lst').querySelectorAll('select').forEach(sel => { sel.value = 'keldi'; }); dirty = true; };
+    // Kamera: tanilgan o'quvchilar ro'yxatda «Keldi» bo'ladi (saqlashni admin o'zi bosadi)
+    $('#cm').onclick = async () => {
+      err.textContent = '';
+      if (!rows.length) { err.textContent = "Bu sanada guruhda o'quvchi yo'q"; return; }
+      if (cur !== today && !await IC.ask(`Tanlangan sana bugun emas (${label(cur)}). Kamera natijasi shu sanaga belgilanadi. Davom etasizmi?`, { yes: 'Davom etish' })) return;
+      YUZ.attendance(g, rows, ids => {
+        $('#lst').querySelectorAll('select').forEach(sel => { if (ids.has(Number(sel.dataset.o))) sel.value = 'keldi'; });
+        if (ids.size) dirty = true;
+      });
+    };
     $('#save').onclick = async () => {
       err.textContent = '';
       const items = [...$('#lst').querySelectorAll('select')].filter(sel => sel.value).map(sel => ({ oquvchi_id: Number(sel.dataset.o), holat: sel.value }));

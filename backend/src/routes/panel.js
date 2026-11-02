@@ -1,5 +1,5 @@
 // ─── Admin paneli API (superadmin ham foydalana oladi) ─────────────────
-//  /fanlar  /oqituvchilar  /oquvchilar  /guruhlar (+davomat)  /tolovlar  /lidlar  /vakansiyalar  /nomzodlar  /stats
+//  /fanlar  /oqituvchilar  /oquvchilar (+yuz)  /guruhlar (+davomat, +yuzlar)  /tolovlar  /lidlar  /vakansiyalar  /nomzodlar  /stats
 const { Router } = require('express');
 const pool = require('../db');
 const panelAuth = require('../middleware/panelAuth');
@@ -119,6 +119,7 @@ oquvchilar.get('/', wrap(async (req, res) => {
   const q = await pool.query(`
     SELECT o.id, o.ism, o.familiya, o.telefon, o.manzil, o.faol, o.yaratilgan,
            to_char(o.nofaol_sana, 'YYYY-MM-DD') AS nofaol_sana, o.nofaol_sabab,
+           (SELECT COUNT(*)::int FROM oquvchi_yuz y WHERE y.oquvchi_id = o.id) AS yuz_soni,
            COALESCE((SELECT json_agg(json_build_object(
                        'guruh_id', g.id, 'guruh_nomi', g.nomi, 'fan_nomi', f.nomi,
                        'oqituvchi_id', g.oqituvchi_id, 'oqituvchi_nomi', NULLIF(TRIM(CONCAT(t.familiya, ' ', t.ism)), ''),
@@ -162,6 +163,38 @@ oquvchilar.post('/:id/faol', wrap(async (req, res) => {
   const id = int(req.params.id) || 0;
   const q = await pool.query("UPDATE oquvchilar SET faol=TRUE, nofaol_sana=NULL, nofaol_sabab='' WHERE id=$1 AND filial_id=$2 AND NOT faol", [id, req.filialId]);
   await holatNatija(q, id, req.filialId, res, "O'quvchi allaqachon faol");
+}));
+
+// ═══ YUZ VEKTORLARI (yuzni tanib davomat olish uchun) ═══════════════════════
+// Faqat 128 o'lchamli vektor saqlanadi (rasm emas). Vektorni brauzer hisoblaydi; tanish ham brauzerda. Biometrik ma'lumot — rozilik majburiy.
+const YUZ_MAX = 10; // bitta o'quvchi uchun saqlanadigan namunalar soni (eskilari o'chadi)
+const yuzVektor = v => Array.isArray(v) && v.length === 128 && v.every(n => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) < 10);
+oquvchilar.post('/:id/yuz', wrap(async (req, res) => {
+  const id = int(req.params.id) || 0, b = req.body || {};
+  const vs = Array.isArray(b.vektorlar) ? b.vektorlar : [];
+  if (!vs.length || vs.length > 5 || !vs.every(yuzVektor)) return bad(res, "Yuz ma'lumoti noto'g'ri");
+  const c = await pool.connect();
+  try {
+    await c.query('BEGIN');
+    const o = await c.query('SELECT yuz_rozilik FROM oquvchilar WHERE id=$1 AND filial_id=$2 FOR UPDATE', [id, req.filialId]);
+    if (!o.rowCount) { await c.query('ROLLBACK'); return bad(res, 'Topilmadi', 404); }
+    if (b.rozilik !== true && !o.rows[0].yuz_rozilik) { await c.query('ROLLBACK'); return bad(res, "Yuzni kiritish uchun o'quvchi (yoki ota-onasi) roziligi kerak"); }
+    if (b.rozilik === true && !o.rows[0].yuz_rozilik) await c.query('UPDATE oquvchilar SET yuz_rozilik=NOW() WHERE id=$1', [id]);
+    if (b.almashtir === true) await c.query('DELETE FROM oquvchi_yuz WHERE oquvchi_id=$1', [id]);
+    for (const v of vs) await c.query('INSERT INTO oquvchi_yuz(oquvchi_id, vektor) VALUES($1,$2)', [id, v]);
+    await c.query('DELETE FROM oquvchi_yuz WHERE oquvchi_id=$1 AND id NOT IN (SELECT id FROM oquvchi_yuz WHERE oquvchi_id=$1 ORDER BY id DESC LIMIT $2)', [id, YUZ_MAX]);
+    const n = await c.query('SELECT COUNT(*)::int AS n FROM oquvchi_yuz WHERE oquvchi_id=$1', [id]);
+    await c.query('COMMIT');
+    res.json({ ok: true, yuz_soni: n.rows[0].n });
+  } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; }
+  finally { c.release(); }
+}));
+oquvchilar.delete('/:id/yuz', wrap(async (req, res) => { // yuz ma'lumotlarini butunlay o'chirish (rozilik ham bekor bo'ladi)
+  const id = int(req.params.id) || 0;
+  if (!(await inFilial('oquvchilar', id, req.filialId))) return bad(res, 'Topilmadi', 404);
+  await pool.query('DELETE FROM oquvchi_yuz WHERE oquvchi_id=$1', [id]);
+  await pool.query('UPDATE oquvchilar SET yuz_rozilik=NULL WHERE id=$1', [id]);
+  res.json({ ok: true });
 }));
 router.use('/oquvchilar', oquvchilar);
 
@@ -238,6 +271,21 @@ router.get('/guruhlar/:id/oquvchilar', wrap(async (req, res) => {
       FROM guruh_oquvchilari x JOIN oquvchilar o ON o.id=x.oquvchi_id
      WHERE x.guruh_id=$1 ORDER BY o.familiya, o.ism`, [req.params.id]);
   res.json({ ok: true, items: r.rows });
+}));
+// Guruh o'quvchilarining yuz vektorlari (kamera bilan davomat uchun). Faqat faol o'quvchilar.
+router.get('/guruhlar/:id/yuzlar', wrap(async (req, res) => {
+  const gid = int(req.params.id); if (!gid) return bad(res, "Noto'g'ri guruh");
+  if (!(await inFilial('guruhlar', gid, req.filialId))) return bad(res, 'Guruh topilmadi', 404);
+  const r = await pool.query(`
+    SELECT y.oquvchi_id, y.vektor
+      FROM guruh_oquvchilari x
+      JOIN oquvchilar o ON o.id = x.oquvchi_id AND o.faol
+      JOIN oquvchi_yuz y ON y.oquvchi_id = o.id
+     WHERE x.guruh_id = $1 ORDER BY y.oquvchi_id, y.id`, [gid]);
+  const m = new Map();
+  for (const x of r.rows) { if (!m.has(x.oquvchi_id)) m.set(x.oquvchi_id, []); m.get(x.oquvchi_id).push(x.vektor); }
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ ok: true, items: [...m].map(([oquvchi_id, vektorlar]) => ({ oquvchi_id, vektorlar })) });
 }));
 router.post('/guruhlar/:id/oquvchilar', wrap(async (req, res) => {
   const oid = int(req.body.oquvchi_id); if (!oid) return bad(res, "O'quvchini tanlang");

@@ -386,6 +386,83 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
   r = await call('PUT', `/kurs-adminlar/${AID}`, { ism: 'Ali', familiya: 'Valiyev', login: LOGIN, filial_id: F1, faol: true }, SU); t('qayta faollashtirish', r.s === 200, r);
   r = await call('POST', '/auth/login', { username: LOGIN, parol: 'YangiParol777' }); t('faollashtirilgach kiradi', r.s === 200, r);
 
+  // — GURUH HOLATI: yopilgan_sana, reestr, yozuvlarni bloklash, avto-boshlash, boshlangan guruhga qabul, «kechikdi», davomiylik
+  {
+    const pool = require('../src/db'), jobs = require('../src/jobs');
+    const TASH = new Date(Date.now() + 5 * 3600 * 1000).toISOString().slice(0, 10); // Toshkent «bugun»i
+    const gBody = (extra = {}) => ({ nomi: 'CLOSE-1', fan_id: KID, oqituvchi_id: TID, oylik_narx: 100000, kunlar: [2], soat: '10:00', davomiylik: 90, max_oquvchi: 5, ...extra });
+    const grp = async id => (await call('GET', '/guruhlar', null, KA)).d.guruhlar.find(x => x.id === id);
+    const inBot = async id => { const b = (await call('GET', `/bot/kurslar?filial_id=${F1}`, null, null, BOT)).d; return (b.fanlar || []).flatMap(f => f.guruhlar).find(x => x.id === id); };
+    const rowsOf = async (oy, gid) => (await call('GET', `/tolov-reestr?oy=${oy}`, null, KA)).d.items.filter(x => x.guruh_id === gid);
+
+    r = await call('POST', '/guruhlar', gBody({ davomiylik: 5 }), KA); t('dars davomiyligi 15 dan kam → 400', r.s === 400, r);
+    r = await call('POST', '/guruhlar', gBody({ davomiylik: 'abc' }), KA); t('dars davomiyligi matn → 400', r.s === 400, r);
+    r = await call('POST', '/guruhlar', gBody(), KA); t('guruh yaratish (davomiylik bilan)', r.s === 200, r);
+    const CG = r.d.id;
+    { const g = await grp(CG); t('yangi guruh: davomiylik=90, yopilgan_sana yo\'q, botga yozilish yoqilgan', g.davomiylik === 90 && g.yopilgan_sana === null && g.boshlangan_qabul === true && g.holat === 'ochiq', g); }
+    const S1 = (await call('POST', '/oquvchilar', { ism: 'Yopiq', familiya: 'Test', telefon: '+998900000001' }, KA)).d.id;
+    r = await call('POST', `/guruhlar/${CG}/oquvchilar`, { oquvchi_id: S1 }, KA); t('ochiq guruhga o\'quvchi qo\'shiladi', r.s === 200, r);
+    r = await call('POST', '/lidlar', { familiya: 'Lid', ism: 'Yopiq', telefon: '+998900000002', guruh_id: CG }, KA); const LCG = r.d.id;
+    t('reestr: ochiq guruh qatori bor', (await rowsOf(MONTH, CG)).length === 1);
+    r = await call('PUT', `/guruhlar/${CG}/davomat`, { sana: YDAY, items: [{ oquvchi_id: S1, holat: 'kechikdi' }] }, KA); t('davomat: «kechikdi» saqlanadi', r.s === 200, r);
+    r = await call('GET', `/guruhlar/${CG}/davomat?sana=${YDAY}`, null, KA); t('davomat: «kechikdi» o\'qiladi', r.d.items.find(x => x.id === S1).holat === 'kechikdi', r);
+    r = await call('POST', '/tolovlar', { oquvchi_id: S1, guruh_id: CG, summa: 50000 }, KA); t('to\'lov kiritish (yopishdan oldin)', r.s === 200, r);
+    r = await call('GET', '/stats', null, KA); t('stats: oy tushumi Toshkent oyi bo\'yicha (bugungi to\'lov kiradi)', r.d.stats.oy_tushum >= 50000, r.d);
+
+    // Yopish
+    r = await call('PUT', `/guruhlar/${CG}`, gBody({ holat: 'yopilgan' }), KA); t('guruhni yopish', r.s === 200, r);
+    { const g = await grp(CG); t('yopilgan: yopilgan_sana = bugun (Toshkent)', g.holat === 'yopilgan' && g.yopilgan_sana === TASH, g); }
+    r = await call('PUT', `/guruhlar/${CG}`, gBody({ holat: 'yopilgan', oylik_narx: 120000 }), KA);
+    t('qayta saqlansa yopilgan_sana o\'zgarmaydi', (await grp(CG)).yopilgan_sana === TASH);
+    t('reestr: yopilgan oyda guruh hamon ko\'rinadi', (await rowsOf(MONTH, CG)).length === 1);
+    r = await call('POST', `/guruhlar/${CG}/oquvchilar`, { oquvchi_id: ids[0] }, KA); t('yopilgan guruhga o\'quvchi qo\'shib bo\'lmaydi → 409', r.s === 409, r);
+    r = await call('PUT', `/guruhlar/${CG}/davomat`, { sana: YDAY, items: [{ oquvchi_id: S1, holat: 'keldi' }] }, KA); t('yopilgan guruhga davomat yozib bo\'lmaydi → 409', r.s === 409, r);
+    r = await call('GET', `/guruhlar/${CG}/davomat?sana=${YDAY}`, null, KA); t('yopilgan guruh davomatini ko\'rish mumkin (eski belgi o\'zgarmagan)', r.s === 200 && r.d.items.find(x => x.id === S1).holat === 'kechikdi', r);
+    r = await call('GET', `/guruhlar/${CG}/oquvchilar`, null, KA); t('yopilgan guruh o\'quvchilarini ko\'rish mumkin', r.s === 200 && r.d.items.length === 1, r);
+    r = await call('POST', '/tolovlar', { oquvchi_id: S1, guruh_id: CG, summa: 10000 }, KA); t('yopilgan guruh qarzi uchun to\'lov qabul qilinadi', r.s === 200, r);
+    r = await call('POST', `/lidlar/${LCG}/oquvchi`, {}, KA); t('lidni yopilgan guruhga o\'quvchiga aylantirib bo\'lmaydi → 409', r.s === 409, r);
+    r = await call('POST', '/lidlar', { familiya: 'X', ism: 'Y', telefon: '+998900000003', guruh_id: CG }, KA); t('yopilgan guruhga qo\'lda lid → 404', r.s === 404, r);
+    t('bot: yopilgan guruh ko\'rinmaydi', !(await inBot(CG)));
+    r = await call('POST', '/bot/lid', { guruh_id: CG, ism: 'Bot Lid', telefon: '+998900000004' }, null, BOT); t('bot: yopilgan guruhga ariza → 404', r.s === 404, r);
+
+    // Reestrdan chiqish: yopilgan sana o'tgan oyga o'tkaziladi (bazada), o'quvchi o'sha oyda guruhda bo'lgan deb belgilanadi
+    await pool.query("UPDATE guruhlar SET yopilgan_sana=(date_trunc('month', $2::date) - INTERVAL '1 day')::date WHERE id=$1", [CG, TASH]);
+    await pool.query("UPDATE guruh_oquvchilari SET qoshilgan = qoshilgan - INTERVAL '60 days' WHERE guruh_id=$1", [CG]);
+    const prevM = new Date(Date.UTC(+TASH.slice(0, 4), +TASH.slice(5, 7) - 2, 1)).toISOString().slice(0, 7);
+    t('reestr: yopilgan oydan keyingi oyda guruh chiqadi', (await rowsOf(MONTH, CG)).length === 0);
+    t('reestr: yopilgan oyning o\'zida (tarix) saqlanadi', (await rowsOf(prevM, CG)).length === 1);
+
+    // Qayta ochish
+    r = await call('PUT', `/guruhlar/${CG}`, gBody({ holat: 'ochiq' }), KA); t('guruhni qayta ochish', r.s === 200, r);
+    { const g = await grp(CG); t('qayta ochilsa yopilgan_sana tozalanadi', g.holat === 'ochiq' && g.yopilgan_sana === null, g); }
+    t('reestr: qayta ochilgan guruh qaytadi', (await rowsOf(MONTH, CG)).length === 1);
+    { const x = await inBot(CG); t('bot: qayta ochilgan guruh ko\'rinadi (davomiylik bilan)', !!x && x.davomiylik === 90 && x.holat === 'ochiq', x); }
+    r = await call('PUT', `/guruhlar/${CG}/davomat`, { sana: YDAY, items: [{ oquvchi_id: S1, holat: 'keldi' }] }, KA); t('qayta ochilgan guruhga davomat yoziladi', r.s === 200, r);
+
+    // Boshlangan holat: avto-o'tish va botdan qabul
+    r = await call('POST', '/guruhlar', gBody({ nomi: 'AUTO-1', boshlanish: YDAY }), KA); const AG = r.d.id;
+    t('boshlanish sanasi o\'tgan «Ochiq» guruh «Boshlangan» bo\'lib saqlanadi', (await grp(AG)).holat === 'boshlangan');
+    r = await call('POST', '/guruhlar', gBody({ nomi: 'AUTO-2', boshlanish: '2099-01-01' }), KA); const AG2 = r.d.id;
+    t('boshlanish kelajakda: «Ochiq» qoladi', (await grp(AG2)).holat === 'ochiq');
+    await pool.query("UPDATE guruhlar SET holat='ochiq' WHERE id=$1", [AG]);
+    await jobs.autoStartGroups();
+    t('fon vazifasi: sanasi kelgan «Ochiq» → «Boshlangan»', (await grp(AG)).holat === 'boshlangan');
+    t('fon vazifasi: kelajakdagi guruh o\'zgarmaydi', (await grp(AG2)).holat === 'ochiq');
+    await pool.query("UPDATE guruhlar SET holat='yopilgan' WHERE id=$1", [AG2]); await jobs.autoStartGroups();
+    t('fon vazifasi: yopilgan guruhga tegmaydi', (await grp(AG2)).holat === 'yopilgan');
+    { const x = await inBot(AG); t('bot: «Boshlangan» guruh ko\'rinadi (holat=boshlangan)', !!x && x.holat === 'boshlangan', x); }
+    r = await call('PUT', `/guruhlar/${AG}`, gBody({ nomi: 'AUTO-1', boshlanish: YDAY, holat: 'boshlangan', boshlangan_qabul: false }), KA); t('boshlangan guruhga botdan qabulni o\'chirish', r.s === 200, r);
+    t('bot: qabul o\'chirilgan boshlangan guruh ko\'rinmaydi', !(await inBot(AG)));
+    r = await call('POST', '/bot/lid', { guruh_id: AG, ism: 'Bot Lid', telefon: '+998900000005' }, null, BOT); t('bot: qabul o\'chirilgan guruhga ariza → 409', r.s === 409, r);
+    r = await call('POST', `/guruhlar/${AG}/oquvchilar`, { oquvchi_id: S1 }, KA); t('admin qo\'lda boshlangan guruhga qo\'sha oladi', r.s === 200, r);
+    r = await call('PUT', `/guruhlar/${AG}`, gBody({ nomi: 'AUTO-1', boshlanish: YDAY, holat: 'boshlangan', boshlangan_qabul: true }), KA);
+    r = await call('POST', '/bot/lid', { guruh_id: AG, ism: 'Bot Lid', telefon: '+998900000006' }, null, BOT); t('bot: qabul yoqilgach boshlangan guruhga ariza qabul qilinadi', r.s === 200 && r.d.id, r);
+    await call('DELETE', '/lidlar/' + r.d.id, null, KA);
+
+    for (const g of [CG, AG, AG2]) await call('DELETE', `/guruhlar/${g}`, null, KA);
+    await call('DELETE', '/lidlar/' + LCG, null, KA); await call('DELETE', '/oquvchilar/' + S1, null, KA);
+  }
+
   // — tozalash
   await call('DELETE', `/guruhlar/${GID}`, null, SU); await call('DELETE', `/guruhlar/${GMAT}`, null, SU);
   await call('DELETE', `/oqituvchilar/${TID}`, null, SU); await call('DELETE', `/oqituvchilar/${TMAT}`, null, SU);

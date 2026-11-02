@@ -15,7 +15,7 @@ router.get('/', wrap(async (req, res) => {
       (SELECT COUNT(*)::int FROM oquvchilar o WHERE o.filial_id=f.id AND o.faol)                 AS oquvchilar,
       (SELECT COUNT(*)::int FROM oqituvchilar q WHERE q.filial_id=f.id AND q.faol)               AS oqituvchilar,
       (SELECT COALESCE(SUM(t.summa),0)::float FROM tolovlar t JOIN oquvchilar o ON o.id=t.oquvchi_id
-        WHERE o.filial_id=f.id AND date_trunc('month',t.sana)=date_trunc('month',CURRENT_DATE))  AS oy_tushum,
+        WHERE o.filial_id=f.id AND date_trunc('month',t.sana)=date_trunc('month',(NOW() AT TIME ZONE 'Asia/Tashkent')::date))  AS oy_tushum,
       (SELECT COUNT(*)::int FROM lidlar l WHERE l.filial_id=f.id AND l.holat='yangi')            AS yangi_lidlar,
       (SELECT COUNT(*)::int FROM nomzodlar n WHERE n.filial_id=f.id AND n.holat='yangi')         AS yangi_nomzodlar
       FROM filiallar f ORDER BY f.id`);

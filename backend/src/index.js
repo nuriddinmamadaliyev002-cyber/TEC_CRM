@@ -47,6 +47,6 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, HOST, async () => {
   console.log(`✅ Today Education Centre API: http://${HOST}:${PORT}`);
-  try { await pool.query('SELECT NOW()'); console.log('✅ PostgreSQL OK'); }
+  try { await pool.query('SELECT NOW()'); console.log('✅ PostgreSQL OK'); require('./jobs').start(); }
   catch (e) { console.error('❌ PostgreSQL xatolik:', e.message); }
 });

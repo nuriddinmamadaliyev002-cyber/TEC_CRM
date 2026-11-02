@@ -3,7 +3,7 @@
 const { Router } = require('express');
 const pool = require('../db');
 const panelAuth = require('../middleware/panelAuth');
-const { str, int, num, phone, date, bad, wrap } = require('../util');
+const { str, int, num, phone, date, bad, wrap, todayISO } = require('../util');
 
 const router = Router();
 router.use(panelAuth);
@@ -14,13 +14,10 @@ function realDate(v) {
   const d = new Date(s + 'T00:00:00Z');
   return !isNaN(d) && d.toISOString().slice(0, 10) === s ? s : null;
 }
-// «Bugun» — doim Toshkent vaqti bilan (server/baza vaqt mintaqasiga bog'liq emas)
 // Filial bo'yicha egalik tekshiruvlari (req.filialId panelAuth'dan keladi). Boshqa filial obyekti → «topilmadi».
 const inFilial = async (table, id, filial) =>
   !!id && !!filial && (await pool.query(`SELECT 1 FROM ${table} WHERE id=$1 AND filial_id=$2`, [id, filial])).rowCount > 0; // table — faqat quyidagi qat'iy nomlar
-const tzParts = () => Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent', year: 'numeric', month: '2-digit', day: '2-digit' })
-  .formatToParts(new Date()).map(p => [p.type, p.value]));
-const todayISO = () => { const p = tzParts(); return `${p.year}-${p.month}-${p.day}`; };
+const GURUH_YOPIQ = "Guruh yopilgan. Avval uni «Tahrirlash» orqali qayta oching";
 
 // ═══ FANLAR (o'quv markazda o'tiladigan fanlar nomenklaturasi) ═══════════════
 router.get('/fanlar', wrap(async (req, res) => {
@@ -201,7 +198,7 @@ router.use('/oquvchilar', oquvchilar);
 // ═══ GURUHLAR ════════════════════════════════════════════════════════════════
 router.get('/guruhlar', wrap(async (req, res) => {
   const r = await pool.query(`
-    SELECT g.*, to_char(g.boshlanish, 'YYYY-MM-DD') AS boshlanish,
+    SELECT g.*, to_char(g.boshlanish, 'YYYY-MM-DD') AS boshlanish, to_char(g.yopilgan_sana, 'YYYY-MM-DD') AS yopilgan_sana,
            g.oylik_narx::float AS oylik_narx,
            f.nomi AS fan_nomi, TRIM(o.familiya||' '||o.ism) AS oqituvchi_nomi,
            (SELECT COUNT(*)::int FROM guruh_oquvchilari x WHERE x.guruh_id=g.id) AS oquvchilar_soni
@@ -220,8 +217,15 @@ function guruhBody(b) {
   const nomi = str(b.nomi, 200), fan = int(b.fan_id), max = int(b.max_oquvchi) || 20;
   if (!nomi) return { err: 'Guruh nomi majburiy' };
   if (!fan) return { err: 'Fanni tanlang' };
-  const holat = ['ochiq', 'boshlangan', 'yopilgan'].includes(b.holat) ? b.holat : 'ochiq';
+  let holat = ['ochiq', 'boshlangan', 'yopilgan'].includes(b.holat) ? b.holat : 'ochiq';
   if (b.boshlanish && !date(b.boshlanish)) return { err: "Boshlanish sanasi noto'g'ri" };
+  // Boshlanish sanasi kelgan «Ochiq» guruh darhol «Boshlangan» bo'ladi (fon vazifasi ham shuni qiladi — holat o'zgarib ketmasin)
+  if (holat === 'ochiq' && date(b.boshlanish) && date(b.boshlanish) <= todayISO()) holat = 'boshlangan';
+  let dav = null;
+  if (b.davomiylik !== '' && b.davomiylik != null) {
+    dav = int(b.davomiylik);
+    if (!dav || dav < 15 || dav > 480) return { err: "Dars davomiyligi 15–480 daqiqa bo'lsin" };
+  }
   const kunlar = [...new Set((Array.isArray(b.kunlar) ? b.kunlar : []).map(Number))].sort((x, y) => x - y);
   if (kunlar.some(k => !Number.isInteger(k) || k < 1 || k > 7)) return { err: "Dars kunlari noto'g'ri" };
   const soat = str(b.soat, 5);
@@ -231,7 +235,8 @@ function guruhBody(b) {
   if (kunlar.length && !soat) return { err: 'Dars vaqtini tanlang' };
   if (soat && !kunlar.length) return { err: 'Dars kunlarini tanlang' };
   const jadval = kunlar.length ? kunlar.map(k => KUN[k - 1]).join('-') + ' ' + soat : '';
-  return { v: [nomi, fan, int(b.oqituvchi_id), jadval, kunlar, soat || null, date(b.boshlanish), max, holat, narx] };
+  // v: 0 nomi, 1 fan, 2 o'qituvchi, 3 jadval, 4 kunlar, 5 soat, 6 boshlanish, 7 max, 8 holat, 9 narx, 10 davomiylik, 11 botda boshlangan guruhga yozilish
+  return { v: [nomi, fan, int(b.oqituvchi_id), jadval, kunlar, soat || null, date(b.boshlanish), max, holat, narx, dav, b.boshlangan_qabul !== false] };
 }
 // O'qituvchi faqat o'z fani bo'yicha guruhga biriktiriladi
 async function oqituvchiXato(fan, tid, filial) {
@@ -246,7 +251,8 @@ router.post('/guruhlar', wrap(async (req, res) => {
   const { err, v } = guruhBody(req.body); if (err) return bad(res, err);
   const oe = await oqituvchiXato(v[1], v[2], req.filialId); if (oe) return bad(res, oe);
   try {
-    const r = await pool.query('INSERT INTO guruhlar(nomi,fan_id,oqituvchi_id,jadval,kunlar,soat,boshlanish,max_oquvchi,holat,oylik_narx,filial_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id', [...v, req.filialId]);
+    const r = await pool.query(`INSERT INTO guruhlar(nomi,fan_id,oqituvchi_id,jadval,kunlar,soat,boshlanish,max_oquvchi,holat,oylik_narx,davomiylik,boshlangan_qabul,filial_id,yopilgan_sana)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, CASE WHEN $9='yopilgan' THEN $14::date END) RETURNING id`, [...v, req.filialId, todayISO()]);
     res.json({ ok: true, id: r.rows[0].id });
   } catch (e) { if (!fkErr(e, res)) throw e; }
 }));
@@ -254,7 +260,10 @@ router.put('/guruhlar/:id', wrap(async (req, res) => {
   const { err, v } = guruhBody(req.body); if (err) return bad(res, err);
   const oe = await oqituvchiXato(v[1], v[2], req.filialId); if (oe) return bad(res, oe);
   try {
-    const r = await pool.query('UPDATE guruhlar SET nomi=$1,fan_id=$2,oqituvchi_id=$3,jadval=$4,kunlar=$5,soat=$6,boshlanish=$7,max_oquvchi=$8,holat=$9,oylik_narx=$10 WHERE id=$11 AND filial_id=$12', [...v, int(req.params.id) || 0, req.filialId]);
+    // Yopilgan sana: yopilganda bir marta qo'yiladi (qayta saqlansa o'zgarmaydi), qayta ochilsa tozalanadi
+    const r = await pool.query(`UPDATE guruhlar SET nomi=$1,fan_id=$2,oqituvchi_id=$3,jadval=$4,kunlar=$5,soat=$6,boshlanish=$7,max_oquvchi=$8,holat=$9,oylik_narx=$10,
+        davomiylik=$11,boshlangan_qabul=$12, yopilgan_sana = CASE WHEN $9='yopilgan' THEN COALESCE(yopilgan_sana, $15::date) END
+      WHERE id=$13 AND filial_id=$14`, [...v, int(req.params.id) || 0, req.filialId, todayISO()]);
     r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
   } catch (e) { if (!fkErr(e, res)) throw e; }
 }));
@@ -294,8 +303,9 @@ router.post('/guruhlar/:id/oquvchilar', wrap(async (req, res) => {
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
-    const g = await c.query('SELECT max_oquvchi FROM guruhlar WHERE id=$1 AND filial_id=$2 FOR UPDATE', [gid, req.filialId]);
+    const g = await c.query('SELECT max_oquvchi, holat FROM guruhlar WHERE id=$1 AND filial_id=$2 FOR UPDATE', [gid, req.filialId]);
     if (!g.rowCount) { await c.query('ROLLBACK'); return bad(res, 'Guruh topilmadi', 404); }
+    if (g.rows[0].holat === 'yopilgan') { await c.query('ROLLBACK'); return bad(res, GURUH_YOPIQ, 409); }
     const n = await c.query('SELECT COUNT(*)::int AS n FROM guruh_oquvchilari WHERE guruh_id=$1', [gid]);
     if (n.rows[0].n >= g.rows[0].max_oquvchi) { await c.query('ROLLBACK'); return bad(res, "Guruh to'lgan", 409); }
     await c.query('INSERT INTO guruh_oquvchilari(guruh_id,oquvchi_id) VALUES($1,$2)', [gid, oid]);
@@ -315,7 +325,7 @@ router.delete('/guruhlar/:id/oquvchilar/:oid', wrap(async (req, res) => {
 }));
 
 // ═══ DAVOMAT (admin belgilaydi) ═════════════════════════════════════════════
-const DAVOMAT_HOLAT = ['keldi', 'kelmadi', 'sababli'];
+const DAVOMAT_HOLAT = ['keldi', 'kechikdi', 'kelmadi', 'sababli'];
 // Tanlangan kun davomati: guruhdagi har bir o'quvchi + belgilangan holat (yoki null)
 router.get('/guruhlar/:id/davomat', wrap(async (req, res) => {
   const gid = int(req.params.id); if (!gid) return bad(res, "Noto'g'ri guruh");
@@ -341,7 +351,9 @@ router.put('/guruhlar/:id/davomat', wrap(async (req, res) => {
   const items = (req.body || {}).items;
   if (!Array.isArray(items) || !items.length) return bad(res, "Davomat bo'sh");
   if (items.length > 500) return bad(res, "Juda ko'p yozuv");
-  if (!(await inFilial('guruhlar', gid, req.filialId))) return bad(res, 'Guruh topilmadi', 404);
+  const gr = await pool.query('SELECT holat FROM guruhlar WHERE id=$1 AND filial_id=$2', [gid, req.filialId]);
+  if (!gr.rowCount) return bad(res, 'Guruh topilmadi', 404);
+  if (gr.rows[0].holat === 'yopilgan') return bad(res, GURUH_YOPIQ, 409); // yopilgan guruh davomati faqat ko'riladi
   const ids = [], hol = [], seen = new Set();
   for (const it of items) {
     const oid = int(it && it.oquvchi_id);
@@ -412,7 +424,8 @@ router.post('/lidlar/:id/oquvchi', wrap(async (req, res) => {
     const lid = l.rows[0];
     if (lid.oquvchi_id) { await c.query('ROLLBACK'); return bad(res, "Bu lid allaqachon o'quvchiga aylantirilgan", 409); }
     if (lid.guruh_id) { // guruhni qulflab, joy borligini tekshiramiz
-      const g = await c.query('SELECT max_oquvchi FROM guruhlar WHERE id=$1 FOR UPDATE', [lid.guruh_id]);
+      const g = await c.query('SELECT max_oquvchi, holat FROM guruhlar WHERE id=$1 FOR UPDATE', [lid.guruh_id]);
+      if (g.rowCount && g.rows[0].holat === 'yopilgan') { await c.query('ROLLBACK'); return bad(res, "Lidning guruhi yopilgan. Avval guruhni qayta oching", 409); }
       const n = await c.query('SELECT COUNT(*)::int AS n FROM guruh_oquvchilari WHERE guruh_id=$1', [lid.guruh_id]);
       if (g.rowCount && n.rows[0].n >= g.rows[0].max_oquvchi) { await c.query('ROLLBACK'); return bad(res, "Guruh to'lgan", 409); }
     }
@@ -544,6 +557,7 @@ router.delete('/tolovlar/:id', wrap(async (req, res) => {
 // Har bir qator = (guruh, o'quvchi) tanlangan oy uchun. Narx = guruhning oylik narxi, "to'lov qildi" = shu oydagi to'lovlar yig'indisi.
 // O'quvchi oyda ko'rinadi, agar: guruhga shu oy tugamasidan oldin qo'shilgan, guruh shu oy tugamasidan oldin boshlangan va
 // (hozir faol YOKI nofaol qilingan sana shu oydan KEYIN). Ya'ni dekabrda nofaol qilingan o'quvchi noyabrda ko'rinadi, dekabrda yo'q.
+// Yopilgan guruh: yopilgan oygacha (shu oy ham) ko'rinadi, keyingi oylarda chiqadi; eski oylar tarixi saqlanadi.
 const OY_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const oyOk = v => OY_RE.test(String(v || '')) && String(v) <= todayISO().slice(0, 7); // kelajak oylari yo'q
 const USULLAR = ['naqd', 'karta', 'otkazma'];
@@ -577,6 +591,7 @@ async function reestrRows(oy, filial) {
      WHERE g.filial_id = $2
        AND (x.qoshilgan AT TIME ZONE 'Asia/Tashkent')::date < ($1::date + INTERVAL '1 month')
        AND (g.boshlanish IS NULL OR g.boshlanish < ($1::date + INTERVAL '1 month'))
+       AND (g.yopilgan_sana IS NULL OR g.yopilgan_sana >= $1::date)   -- yopilgan guruh yopilgan oyigacha (shu oy ham) ko'rinadi
        AND (o.faol OR o.nofaol_sana >= ($1::date + INTERVAL '1 month'))
      ORDER BY g.nomi, o.familiya, o.ism`, [bosh, filial]);
   return r.rows.map(({ u_naqd, u_karta, u_otkazma, ...x }) => ({ ...x, usul_summa: { naqd: u_naqd, karta: u_karta, otkazma: u_otkazma },
@@ -682,7 +697,7 @@ router.get('/stats', wrap(async (req, res) => {
       (SELECT COUNT(*)::int FROM oquvchilar WHERE faol AND filial_id=$1)     AS oquvchilar,
       (SELECT COUNT(*)::int FROM oqituvchilar WHERE faol AND filial_id=$1)   AS oqituvchilar,
       (SELECT COALESCE(SUM(t.summa),0)::float FROM tolovlar t JOIN oquvchilar o ON o.id=t.oquvchi_id
-        WHERE o.filial_id=$1 AND date_trunc('month',t.sana)=date_trunc('month',CURRENT_DATE)) AS oy_tushum,
+        WHERE o.filial_id=$1 AND date_trunc('month',t.sana)=date_trunc('month',(NOW() AT TIME ZONE 'Asia/Tashkent')::date)) AS oy_tushum,
       (SELECT COALESCE(SUM(t.summa),0)::float FROM tolovlar t JOIN oquvchilar o ON o.id=t.oquvchi_id WHERE o.filial_id=$1) AS jami_tushum,
       (SELECT COUNT(*)::int FROM kurs_adminlar WHERE faol AND filial_id=$1)  AS kurs_adminlar,
       (SELECT COUNT(*)::int FROM lidlar WHERE holat='yangi' AND filial_id=$1)    AS yangi_lidlar,

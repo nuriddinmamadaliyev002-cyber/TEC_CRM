@@ -257,3 +257,20 @@ CREATE TABLE IF NOT EXISTS oquvchi_yuz (
   yaratilgan  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_oquvchi_yuz_oquvchi ON oquvchi_yuz(oquvchi_id);
+
+-- ═══ Guruh holati: yopilgan sana, boshlangan guruhga qabul, dars davomiyligi; davomatga «kechikdi» (migratsiya: qayta ishga tushirish xavfsiz) ═══
+-- yopilgan_sana: guruh qaysi sanada yopilgan. To'lov reestrida guruh shu oygacha (shu oy ham) ko'rinadi, keyingi oylarda chiqadi; qayta ochilsa sana tozalanadi.
+ALTER TABLE guruhlar ADD COLUMN IF NOT EXISTS yopilgan_sana DATE;
+-- Eski yopilgan guruhlarning sanasi noma'lum: migratsiya kuni qo'yiladi (Toshkent vaqti)
+UPDATE guruhlar SET yopilgan_sana = (NOW() AT TIME ZONE 'Asia/Tashkent')::date WHERE holat = 'yopilgan' AND yopilgan_sana IS NULL;
+-- Dars boshlangan guruhga botdan yangi o'quvchi yozilishi mumkinmi
+ALTER TABLE guruhlar ADD COLUMN IF NOT EXISTS boshlangan_qabul BOOLEAN NOT NULL DEFAULT TRUE;
+-- Bitta dars davomiyligi (daqiqa); bo'sh bo'lishi mumkin
+ALTER TABLE guruhlar ADD COLUMN IF NOT EXISTS davomiylik SMALLINT CHECK (davomiylik IS NULL OR davomiylik BETWEEN 15 AND 480);
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'davomat'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%kechikdi%') THEN
+    ALTER TABLE davomat DROP CONSTRAINT IF EXISTS davomat_holat_check;
+    ALTER TABLE davomat ADD CONSTRAINT davomat_holat_check CHECK (holat IN ('keldi','kechikdi','kelmadi','sababli'));
+  END IF;
+END $$;

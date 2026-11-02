@@ -37,7 +37,7 @@ router.get('/kurslar', wrap(async (req, res) => {
   if (!fl.rowCount) return bad(res, 'Filial topilmadi', 404);
   const r = await pool.query(`
     SELECT f.id AS fan_id, f.nomi AS fan_nomi, f.tavsif,
-           g.id, g.nomi, g.jadval, g.kunlar, g.soat, to_char(g.boshlanish,'YYYY-MM-DD') AS boshlanish,
+           g.id, g.nomi, g.jadval, g.kunlar, g.soat, g.davomiylik, g.holat, g.boshlangan_qabul, to_char(g.boshlanish,'YYYY-MM-DD') AS boshlanish,
            g.oylik_narx::float AS oylik_narx, g.max_oquvchi,
            TRIM(CONCAT(q.familiya, ' ', q.ism)) AS oqituvchi,
            (SELECT COUNT(*)::int FROM guruh_oquvchilari x WHERE x.guruh_id=g.id) AS band
@@ -50,8 +50,9 @@ router.get('/kurslar', wrap(async (req, res) => {
   const fans = new Map();
   for (const x of r.rows) {
     if (x.band >= x.max_oquvchi) continue; // to'lgan guruhga yozilib bo'lmaydi
+    if (x.holat === 'boshlangan' && !x.boshlangan_qabul) continue; // dars boshlangan, yangi o'quvchi qabul qilinmaydi
     if (!fans.has(x.fan_id)) fans.set(x.fan_id, { id: x.fan_id, nomi: x.fan_nomi, tavsif: x.tavsif, guruhlar: [] });
-    fans.get(x.fan_id).guruhlar.push({ id: x.id, nomi: x.nomi, jadval: x.jadval, kunlar: x.kunlar, soat: x.soat, boshlanish: x.boshlanish,
+    fans.get(x.fan_id).guruhlar.push({ id: x.id, nomi: x.nomi, jadval: x.jadval, kunlar: x.kunlar, soat: x.soat, davomiylik: x.davomiylik, holat: x.holat, boshlanish: x.boshlanish,
       oylik_narx: x.oylik_narx, oqituvchi: x.oqituvchi, bosh_joy: x.max_oquvchi - x.band });
   }
   res.json({ ok: true, filial: fl.rows[0], fanlar: [...fans.values()] });
@@ -63,10 +64,11 @@ router.post('/lid', wrap(async (req, res) => {
   if (ism.length < 2) return bad(res, "Ism noto'g'ri");
   if (!tel) return bad(res, "Telefon raqami noto'g'ri");
   if (!gid) return bad(res, 'Guruhni tanlang');
-  const g = await pool.query(`SELECT g.id, g.nomi, g.filial_id, f.nomi AS fan_nomi FROM guruhlar g JOIN fanlar f ON f.id=g.fan_id AND f.faol
+  const g = await pool.query(`SELECT g.id, g.nomi, g.filial_id, g.holat, g.boshlangan_qabul, f.nomi AS fan_nomi FROM guruhlar g JOIN fanlar f ON f.id=g.fan_id AND f.faol
                                JOIN filiallar fl ON fl.id=g.filial_id AND fl.faol
                                WHERE g.id=$1 AND g.holat<>'yopilgan'`, [gid]);
   if (!g.rowCount) return bad(res, 'Guruh topilmadi yoki yopilgan', 404);
+  if (g.rows[0].holat === 'boshlangan' && !g.rows[0].boshlangan_qabul) return bad(res, "Bu guruhda dars boshlangan, yangi o'quvchi qabul qilinmaydi", 409);
   // Bir odam bir guruhga ketma-ket bosib ariza to'ldirmasin
   if (tg && (await pool.query("SELECT 1 FROM lidlar WHERE telegram_id=$1 AND guruh_id=$2 AND holat IN ('yangi','aloqada')", [tg, gid])).rowCount)
     return res.json({ ok: true, takror: true });

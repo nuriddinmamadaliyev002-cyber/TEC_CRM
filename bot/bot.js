@@ -34,6 +34,8 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp
 const KUN = ['Dushanba', 'Seshanba', 'Chorshanba', 'Payshanba', 'Juma', 'Shanba', 'Yakshanba'];
 const money = n => new Intl.NumberFormat('ru-RU').format(Math.round(Number(n) || 0)).replace(/ /g, ' ') + " so'm";
 const normPhone = v => { const s = String(v || '').replace(/[\s()\-.]/g, ''); return /^\+?\d{9,15}$/.test(s) ? s : null; };
+// Dars tugash vaqti: «19:00» + 90 daqiqa → «20:30»
+const endTime = (soat, dav) => { const [h, m] = String(soat).split(':').map(Number), t = h * 60 + m + Number(dav), p = n => String(n).padStart(2, '0'); return `${p(Math.floor(t / 60) % 24)}:${p(t % 60)}`; };
 const HTML = { parse_mode: 'HTML', disable_web_page_preview: true };
 
 const BTN_COURSE = '📚 Kursga yozilish', BTN_JOBS = '💼 Vakansiyalar', BTN_CANCEL = '❌ Bekor qilish', BTN_SKIP = "⏭ O'tkazib yuborish", BTN_PHONE = '📱 Raqamni yuborish';
@@ -89,7 +91,8 @@ async function showGroups(chatId, filialId, fanId) {
     const lines = [`📘 <b>${esc(g.nomi)}</b>`,
       g.oqituvchi ? `👨‍🏫 O'qituvchi: ${esc(g.oqituvchi)}` : null,
       kunlar ? `🗓 Dars kunlari: ${esc(kunlar)}` : null,
-      g.soat ? `🕒 Dars vaqti: ${esc(g.soat)}` : null,
+      g.soat ? `🕒 Dars vaqti: ${esc(g.soat)}${g.davomiylik ? '–' + endTime(g.soat, g.davomiylik) + ` (${g.davomiylik} daqiqa)` : ''}` : null,
+      g.holat === 'boshlangan' ? "⏳ Dars boshlangan — guruhga kech qo'shilasiz, o'tilgan darslar haqida admin bilan kelishasiz" : null,
       `💰 Oylik to'lov: ${g.oylik_narx > 0 ? money(g.oylik_narx) : 'Admin bilan kelishiladi'}`,
       g.boshlanish ? `🚀 Boshlanishi: ${esc(g.boshlanish)}` : null,
       `👥 Bo'sh joylar: ${g.bosh_joy}`].filter(Boolean);

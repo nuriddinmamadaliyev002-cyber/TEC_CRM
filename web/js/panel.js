@@ -20,15 +20,24 @@
   // ── Umumiy ro'yxat sahifasi: sarlavha + qidiruv + jadval + CRUD ──
   function crud(cfg) {
     let items = [], q = '';
+    // cfg.tabs: [{ k, t, test(x), empty }] — ro'yxat bo'limlarga bo'linadi (masalan, Faol / Yopilgan); tanlangan bo'lim cfg.tab da eslab qolinadi
+    const tabs = cfg.tabs || null; if (tabs && !tabs.some(t => t.k === cfg.tab)) cfg.tab = tabs[0].k;
     view.innerHTML = `<div class="head"><h2>${cfg.title} <span class="count" id="cnt"></span></h2><div class="spacer"></div>
       <input class="search" id="q" placeholder="Qidirish…" aria-label="Qidirish">
       ${cfg.noAdd ? '' : `<button class="btn pri" id="add" type="button">+ Qo'shish</button>`}</div>
+      ${tabs ? `<div class="subtabs" role="tablist">${tabs.map(t => `<button class="subtab" role="tab" type="button" data-t="${t.k}">${t.t} <span class="n" data-n="${t.k}"></span></button>`).join('')}</div>` : ''}
       <div class="card tw"><table class="rt"><thead><tr>${cfg.cols.map(c => `<th>${c[0]}</th>`).join('')}<th></th></tr></thead><tbody id="rows"></tbody></table>
       <div class="empty hidden" id="empty">Hozircha ma'lumot yo'q</div></div>`;
     const rows = view.querySelector('#rows');
     const draw = () => {
-      const f = items.filter(x => !q || JSON.stringify(Object.values(x)).toLowerCase().includes(q));
-      view.querySelector('#cnt').textContent = items.length ? `(${f.length})` : '';
+      const tab = tabs && tabs.find(t => t.k === cfg.tab), inTab = tab ? items.filter(tab.test) : items;
+      if (tabs) view.querySelectorAll('.subtab').forEach(b => {
+        const on = b.dataset.t === cfg.tab; b.classList.toggle('on', on); b.setAttribute('aria-selected', String(on));
+        b.querySelector('.n').textContent = items.filter(tabs.find(t => t.k === b.dataset.t).test).length;
+      });
+      const f = inTab.filter(x => !q || JSON.stringify(Object.values(x)).toLowerCase().includes(q));
+      view.querySelector('#cnt').textContent = inTab.length ? `(${f.length})` : '';
+      view.querySelector('#empty').textContent = tab && tab.empty && !q ? tab.empty : "Hozircha ma'lumot yo'q";
       view.querySelector('#empty').classList.toggle('hidden', f.length > 0);
       rows.innerHTML = f.map(x => `<tr>${cfg.cols.map((c, i) => `<td data-l="${i ? esc(c[0]) : ''}">${c[1](x)}</td>`).join('')}${cfg.actions ? cfg.actions(x) : act(x.id)}</tr>`).join('');
     };
@@ -36,10 +45,15 @@
     const edit = async x => {
       const fields = await cfg.fields(x);
       IC.formModal({ title: x ? cfg.editTitle : cfg.addTitle, fields, values: x || cfg.defaults || {},
-        onSubmit: async v => { x ? await IC.api('PUT', `${cfg.path}/${x.id}`, v) : await IC.api('POST', cfg.path, v); await load(); IC.toast('Saqlandi'); } });
+        onSubmit: async v => {
+          // beforeSave(x, v) → false bo'lsa saqlanmaydi (oyna ochiq qoladi)
+          if (cfg.beforeSave && await cfg.beforeSave(x, v) === false) throw new Error('');
+          x ? await IC.api('PUT', `${cfg.path}/${x.id}`, v) : await IC.api('POST', cfg.path, v); await load(); IC.toast('Saqlandi');
+        } });
     };
     const addBtn = view.querySelector('#add'); if (addBtn) addBtn.onclick = () => edit(null);
     view.querySelector('#q').oninput = e => { q = e.target.value.trim().toLowerCase(); draw(); };
+    if (tabs) view.querySelector('.subtabs').onclick = e => { const b = e.target.closest('.subtab'); if (b) { cfg.tab = b.dataset.t; draw(); } };
     rows.onclick = async e => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.e) return edit(items.find(i => String(i.id) === b.dataset.e));
@@ -176,14 +190,27 @@
     await load();
   };
 
+  // Dars tugash vaqti: boshlanish (HH:MM) + davomiylik (daqiqa) → «19:00–20:30»
+  const endTime = (soat, dav) => { if (!soat || !dav) return ''; const [h, m] = soat.split(':').map(Number), t = h * 60 + m + Number(dav); return `${pad2(Math.floor(t / 60) % 24)}:${pad2(t % 60)}`; };
   S.guruhlar = () => crud({
-    title: 'Guruhlar', path: '/guruhlar', addTitle: 'Yangi guruh', editTitle: 'Guruhni tahrirlash', defaults: { holat: 'ochiq', max_oquvchi: 20, oylik_narx: '' },
+    title: 'Guruhlar', path: '/guruhlar', addTitle: 'Yangi guruh', editTitle: 'Guruhni tahrirlash', defaults: { holat: 'ochiq', max_oquvchi: 20, oylik_narx: '', boshlangan_qabul: true },
     delText: "Guruhni o'chirasizmi? (o'quvchilar guruhdan chiqariladi)",
     load: async () => (await IC.api('GET', '/guruhlar')).guruhlar,
+    // Standart: faqat ochiq va boshlangan guruhlar; yopilganlar alohida bo'limda (ro'yxat to'lib ketmasin)
+    tabs: [{ k: 'faol', t: 'Faol', test: x => x.holat !== 'yopilgan', empty: "Faol guruhlar yo'q" },
+      { k: 'yopilgan', t: 'Yopilgan', test: x => x.holat === 'yopilgan', empty: "Yopilgan guruhlar yo'q" }],
+    // Yopishdan oldin ogohlantirish: o'quvchilar to'lov reestridan chiqadi
+    beforeSave: async (x, v) => {
+      if (!x || x.holat === 'yopilgan' || v.holat !== 'yopilgan') return true;
+      return IC.ask(`Guruhda ${x.oquvchilar_soni} ta o'quvchi bor. Yopilgach ular keyingi oylardan boshlab to'lov reestridan chiqadi (shu oygacha tarix saqlanadi), davomat esa faqat ko'riladi. Davom etasizmi?`, { yes: 'Yopish' });
+    },
     cols: [['Guruh', x => `<b>${esc(x.nomi)}</b><div class="muted" style="font-size:13px">${esc(x.fan_nomi)}</div>`],
-      ["O'qituvchi", x => esc(x.oqituvchi_nomi) || '—'], ['Jadval', x => esc(x.jadval) || '—'], ['Boshlanish', x => IC.fdate(x.boshlanish)],
+      ["O'qituvchi", x => esc(x.oqituvchi_nomi) || '—'],
+      ['Jadval', x => esc(x.jadval) ? (x.davomiylik && x.soat ? esc(x.jadval.replace(/ \d\d:\d\d$/, '')) : esc(x.jadval)) + (x.davomiylik ? `<div class="muted" style="font-size:13px">${esc(x.soat)}–${endTime(x.soat, x.davomiylik)} (${x.davomiylik} daq)</div>` : '') : '—'],
+      ['Boshlanish', x => IC.fdate(x.boshlanish)],
       ["Oylik narx", x => IC.money(x.oylik_narx)],
-      ["O'quvchilar", x => `${x.oquvchilar_soni} / ${x.max_oquvchi}`], ['Holat', x => `<span class="badge ${HOLAT[x.holat][1]}">${HOLAT[x.holat][0]}</span>`]],
+      ["O'quvchilar", x => `${x.oquvchilar_soni} / ${x.max_oquvchi}`],
+      ['Holat', x => `<span class="badge ${HOLAT[x.holat][1]}">${HOLAT[x.holat][0]}</span>${x.holat === 'yopilgan' && x.yopilgan_sana ? `<div class="muted" style="font-size:13px">${IC.fdate(x.yopilgan_sana)}</div>` : ''}${x.holat === 'boshlangan' && !x.boshlangan_qabul ? '<div class="muted" style="font-size:13px">Botda yopiq</div>' : ''}`]],
     actions: x => `<td class="act"><button class="btn sm" data-s="${x.id}">O'quvchilar</button> <button class="btn sm" data-a="${x.id}">Davomat</button> <button class="btn sm" data-e="${x.id}">Tahrirlash</button> <button class="btn sm dng" data-d="${x.id}">O'chirish</button></td>`,
     fields: async x => {
       const [f, o] = await Promise.all([IC.api('GET', '/fanlar'), IC.api('GET', '/oqituvchilar')]);
@@ -196,9 +223,12 @@
           options: o.items.filter(t => t.faol || (x && t.id === x.oqituvchi_id)).map(t => ({ v: t.id, t: full(t), group: t.fan_id })) },
         { k: 'kunlar', label: 'Dars kunlari', type: 'days', full: true },
         { k: 'soat', label: 'Dars vaqti', type: 'select', options: SOATLAR.map(t => ({ v: t, t })) },
-        { k: 'boshlanish', label: 'Boshlanish sanasi', type: 'date' }, { k: 'max_oquvchi', label: "Maks. o'quvchi", type: 'number', req: true },
+        { k: 'davomiylik', label: 'Dars davomiyligi (daqiqa)', type: 'number', inputmode: 'numeric', hint: 'Ixtiyoriy, masalan 90. Botda va davomatda dars tugash vaqti ko\'rinadi.' },
+        { k: 'boshlanish', label: 'Boshlanish sanasi', type: 'date', hint: "Sana kelganda «Ochiq» guruh avtomatik «Boshlangan» bo'ladi." }, { k: 'max_oquvchi', label: "Maks. o'quvchi", type: 'number', req: true },
         { k: 'oylik_narx', label: "Oylik to'lov narxi (so'm)", type: 'number', req: true, inputmode: 'decimal' },
-        { k: 'holat', label: 'Holat', type: 'select', req: true, options: [{ v: 'ochiq', t: 'Ochiq' }, { v: 'boshlangan', t: 'Boshlangan' }, { v: 'yopilgan', t: 'Yopilgan' }] }];
+        { k: 'holat', label: 'Holat', type: 'select', req: true, options: [{ v: 'ochiq', t: 'Ochiq' }, { v: 'boshlangan', t: 'Boshlangan' }, { v: 'yopilgan', t: 'Yopilgan' }],
+          hint: "Ochiq/Boshlangan — botda ko'rinadi. Yopilgan — botdan va to'lov reestridan (keyingi oylardan) chiqadi, o'quvchi qo'shish va davomat yozish to'xtaydi." },
+        { k: 'boshlangan_qabul', label: "Dars boshlangach ham botdan yozilish mumkin", type: 'checkbox', full: true, hint: "O'chirilsa, «Boshlangan» guruh botda ko'rinmaydi (admin qo'lda qo'sha oladi)." }];
     },
     onAction: (b, items, reload) => {
       if (b.dataset.s) groupStudents(items.find(i => String(i.id) === b.dataset.s), reload);
@@ -210,7 +240,8 @@
   async function groupStudents(g, reload) {
     const ov = document.createElement('div'); ov.className = 'ov';
     ov.innerHTML = `<div class="card modal" role="dialog" aria-modal="true"><h3>${esc(g.nomi)} — o'quvchilar</h3>
-      <div style="display:flex;gap:8px;margin-bottom:12px"><select id="sel" aria-label="O'quvchi"></select><button class="btn pri" id="go" type="button">Qo'shish</button></div>
+      ${g.holat === 'yopilgan' ? `<p class="muted" style="margin:-6px 0 12px">Guruh yopilgan${g.yopilgan_sana ? ' (' + IC.fdate(g.yopilgan_sana) + ')' : ''}: o'quvchi qo'shib bo'lmaydi. Qo'shish uchun guruhni qayta oching.</p>`
+        : `<div style="display:flex;gap:8px;margin-bottom:12px"><select id="sel" aria-label="O'quvchi"></select><button class="btn pri" id="go" type="button">Qo'shish</button></div>`}
       <div class="err" role="alert"></div><div id="lst"></div><div class="mact"><button class="btn" id="x" type="button">Yopish</button></div></div>`;
     document.body.appendChild(ov);
     const $ = s => ov.querySelector(s), close = () => { ov.remove(); reload(); };
@@ -219,10 +250,10 @@
     const all = (await IC.api('GET', '/oquvchilar')).items.filter(o => o.faol);
     async function draw() {
       const cur = (await IC.api('GET', `/guruhlar/${g.id}/oquvchilar`)).items, ids = new Set(cur.map(c => c.id));
-      $('#sel').innerHTML = all.filter(o => !ids.has(o.id)).map(o => `<option value="${o.id}">${esc(full(o))}</option>`).join('') || '<option value="">— qo\'shiladigan o\'quvchi yo\'q —</option>';
+      if ($('#sel')) $('#sel').innerHTML = all.filter(o => !ids.has(o.id)).map(o => `<option value="${o.id}">${esc(full(o))}</option>`).join('') || '<option value="">— qo\'shiladigan o\'quvchi yo\'q —</option>';
       $('#lst').innerHTML = cur.length ? `<table><tbody>${cur.map(c => `<tr><td><b>${esc(full(c))}</b><div class="muted" style="font-size:13px">${esc(c.telefon)}</div></td><td class="act"><button class="btn sm dng" data-r="${c.id}">Chiqarish</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Guruhda o\'quvchi yo\'q</div>';
     }
-    $('#go').onclick = async () => {
+    if ($('#go')) $('#go').onclick = async () => {
       $('.err').textContent = ''; const v = $('#sel').value; if (!v) return;
       try { await IC.api('POST', `/guruhlar/${g.id}/oquvchilar`, { oquvchi_id: v }); await draw(); } catch (x) { $('.err').textContent = x.message; }
     };
@@ -244,6 +275,7 @@
     const wd = s => dayOf(s).getUTCDay() || 7;                       // 1=Du … 7=Yak (guruh.kunlar bilan bir xil)
     const shift = (s, n) => { const d = dayOf(s); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
     const kunlar = (g.kunlar || []).map(Number);
+    const closed = g.holat === 'yopilgan';   // yopilgan guruh davomati faqat ko'riladi
     const isLesson = s => kunlar.includes(wd(s));
     // Oldingi (dir=-1) / keyingi (dir=+1) dars kuni; dars kunlari belgilanmagan guruhda — oddiy ±1 kun
     const stepLesson = (s, dir) => { if (!kunlar.length) return shift(s, dir); for (let i = 0; i < 7; i++) { s = shift(s, dir); if (isLesson(s)) return s; } return null; };
@@ -256,6 +288,8 @@
 
     const ov = document.createElement('div'); ov.className = 'ov';
     ov.innerHTML = `<div class="card modal" role="dialog" aria-modal="true"><h3>${esc(g.nomi)} — davomat</h3>
+      ${g.soat ? `<p class="muted" style="margin:-8px 0 10px">Dars vaqti: ${esc(g.soat)}${g.davomiylik ? '–' + endTime(g.soat, g.davomiylik) + ' (' + g.davomiylik + ' daq)' : ''}</p>` : ''}
+      ${closed ? `<p class="badge off" style="margin:0 0 10px;display:inline-block">Guruh yopilgan${g.yopilgan_sana ? ' · ' + esc(IC.fdate(g.yopilgan_sana)) : ''} — davomat faqat ko'riladi</p>` : ''}
       <div class="att-nav">
         <button class="btn arrow" id="pv" type="button" aria-label="Oldingi dars kuni" title="Oldingi dars kuni">‹</button>
         <div class="att-date" aria-live="polite"><b id="dl"></b><span class="badge warn hidden" id="xb">Qo'shimcha dars</span></div>
@@ -271,13 +305,14 @@
     $('#x').onclick = close; ov.addEventListener('mousedown', e => { if (e.target === ov) close(); });
     ov.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
     $('#x').focus(); // fokus oyna ichida bo'lsin (Esc ishlashi uchun)
+    if (closed) { $('#all').disabled = true; $('#cm').disabled = true; $('#save').disabled = true; }
 
     const draw = () => {
       $('#lst').innerHTML = rows.length
         ? `<table><tbody>${rows.map(r => `<tr><td><b>${esc(full(r))}</b></td><td class="act">
-            <select data-o="${r.id}" aria-label="${esc(full(r))}" style="width:auto">
+            <select data-o="${r.id}" aria-label="${esc(full(r))}" style="width:auto"${closed ? ' disabled' : ''}>
               <option value="">— belgilanmagan —</option>
-              ${[['keldi', 'Keldi'], ['kelmadi', 'Kelmadi'], ['sababli', 'Sababli']].map(([v, t]) => `<option value="${v}"${r.holat === v ? ' selected' : ''}>${t}</option>`).join('')}
+              ${[['keldi', 'Keldi'], ['kechikdi', 'Kechikdi'], ['kelmadi', 'Kelmadi'], ['sababli', 'Sababli']].map(([v, t]) => `<option value="${v}"${r.holat === v ? ' selected' : ''}>${t}</option>`).join('')}
             </select></td></tr>`).join('')}</tbody></table>`
         : "<div class=\"empty\">Bu sanada guruhda o'quvchi yo'q</div>";
     };

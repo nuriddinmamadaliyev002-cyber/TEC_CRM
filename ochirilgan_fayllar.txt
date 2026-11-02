@@ -1,0 +1,12 @@
+backend/src/middleware/studentAuth.js
+backend/src/middleware/teacherAuth.js
+backend/src/routes/oqituvchiPanel.js
+backend/src/routes/oquvchiPanel.js
+backend/src/telegramWebApp.js
+web/Dockerfile
+web/js/miniapp.js
+web/js/oqituvchi.js
+web/js/oquvchi.js
+web/miniapp.html
+web/oqituvchi.html
+web/oquvchi.html

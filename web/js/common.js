@@ -84,12 +84,12 @@
     } else if (f.type === 'textarea') {
       inp = `<textarea id="${id}"${req}>${esc(v)}</textarea>`;
     } else if (f.type === 'checkbox') {
-      return `<div class="fld chk"><label><input type="checkbox" id="${id}"${v ? ' checked' : ''}> ${esc(f.label)}</label></div>`;
+      return `<div class="fld chk"><label><input type="checkbox" id="${id}"${v ? ' checked' : ''}> ${esc(f.label)}</label>${f.hint ? `<div class="muted" style="font-size:12.5px;margin:2px 0 0 26px">${esc(f.hint)}</div>` : ''}</div>`;
     } else {
       const ex = f.type === 'number' ? ' min="0" step="any"' : '';
       inp = `<input id="${id}" type="${f.type || 'text'}" value="${esc(v)}"${req}${ex}${f.inputmode ? ` inputmode="${f.inputmode}"` : ''}${f.autocomplete ? ` autocomplete="${f.autocomplete}"` : ''}>`;
     }
-    return `<div class="fld"><label for="${id}">${esc(f.label)}${f.req ? ' *' : ''}</label>${inp}</div>`;
+    return `<div class="fld"><label for="${id}">${esc(f.label)}${f.req ? ' *' : ''}</label>${inp}${f.hint ? `<div class="muted" style="font-size:12.5px;margin-top:4px">${esc(f.hint)}</div>` : ''}</div>`;
   }
   function readForm(fields, root) {
     const o = {};

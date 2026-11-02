@@ -63,7 +63,17 @@ Menyuda yangi (ko'rilmagan) lid va nomzodlar soni ko'rsatiladi. Bot backend bila
   boshqa fan o'qituvchisini guruhga qo'yishga yo'l qo'ymaydi.
 - **Dars jadvali** — kunlar (`kunlar`: 1=Du … 7=Yak) va boshlanish vaqti (`soat`: `HH:MM`). Ko'rsatish uchun `jadval` matni
   (masalan `Du-Chor-Ju 19:00`) shulardan serverda hosil qilinadi.
-- **Davomat** — admin panelda: Guruhlar → «Davomat» → sana → har bir o'quvchi uchun Keldi / Kelmadi / Sababli (kelajak sanasi mumkin emas).
+- **Dars davomiyligi** — guruhda ixtiyoriy (`davomiylik`, daqiqa, 15–480). Davomat oynasida va botda dars tugash vaqti ko'rinadi.
+- **Davomat** — admin panelda: Guruhlar → «Davomat» → sana → har bir o'quvchi uchun Keldi / Kechikdi / Kelmadi / Sababli (kelajak sanasi mumkin emas).
+
+### Guruh holati
+| Holat | Ma'nosi |
+|---|---|
+| **Ochiq** | Boshlanish sanasi hali kelmagan; botda ko'rinadi, ariza qabul qilinadi |
+| **Boshlangan** | Dars boshlangan. Boshlanish sanasi kelganda «Ochiq» guruh **avtomatik** shunga o'tadi (server har 10 daqiqada tekshiradi; sanasi o'tgan guruhni «Ochiq» qilib saqlab bo'lmaydi). Botda «⏳ Dars boshlangan» yozuvi bilan ko'rinadi. Guruhdagi **«Dars boshlangach ham botdan yozilish mumkin»** belgisi o'chirilsa, bunday guruh botda ko'rinmaydi (admin qo'lda qo'sha oladi) |
+| **Yopilgan** | Botdan chiqadi. **To'lov reestridan** yopilgan oydan keyingi oylarda chiqadi (yopilgan oyning o'zi va eski oylar tarixi saqlanadi; sana `yopilgan_sana` da, qayta ochilsa tozalanadi). Yangi o'quvchi qo'shib va davomat yozib **bo'lmaydi** (ko'rish mumkin); lidni shu guruhga o'quvchiga aylantirib ham bo'lmaydi. Eski qarz uchun **to'lov qabul qilinaveradi** |
+
+Yopishdan oldin panel ogohlantiradi («Guruhda N ta o'quvchi bor…»). Guruhlar ro'yxatida **Faol** (ochiq + boshlangan) va **Yopilgan** bo'limlari alohida.
 - To'lovlar oylik reestr ko'rinishida yuritiladi, Excel'ga yuklanadi.
 
 ## Yuzni tanib davomat (kamera)
@@ -85,6 +95,8 @@ Admin natijani ko'rib, odatdagidek **«Saqlash»** ni bosadi (kelmadi / sababli 
 - Eski `login_tokenlar` jadvali o'chiriladi.
 - O'qituvchi/o'quvchilardagi `telegram_id` ustuni bazada qoladi (formada ko'rsatilmaydi va ishlatilmaydi).
 - Yangi jadvallar: `lidlar`, `vakansiyalar`, `nomzodlar`.
+- **Guruh holati:** `guruhlar` ga `yopilgan_sana`, `boshlangan_qabul`, `davomiylik` qo'shiladi; `davomat` holatlariga `kechikdi` qo'shiladi.
+  Eski yopilgan guruhlarning yopilgan sanasi noma'lum — migratsiya kuni qo'yiladi (ular keyingi oydan reestrdan chiqadi).
 
 ## Ishga tushirish (lokal)
 ```bash
@@ -112,7 +124,7 @@ Botga ma'lumot chiqishi uchun admin panelda kamida bitta **faol fan** va u bo'yi
 Ishlayotgan server va baza bilan (`LOGIN_MAX_ATTEMPTS=100` — test o'zi login cheklovi ostiga tushmasligi uchun):
 ```bash
 cd backend && LOGIN_MAX_ATTEMPTS=100 npm start &     # alohida terminalda ham bo'ladi
-LOGIN_MAX_ATTEMPTS=100 node scripts/e2e.js           # superadmin paroli: TestParol123 (hash .env da)
+LOGIN_MAX_ATTEMPTS=100 node scripts/e2e.js           # superadmin paroli: TestParol123 (hash .env da; boshqa parol bo'lsa SUPERADMIN_PASSWORD_HASH ni test uchun muhit o'zgaruvchisi bilan bering)
 ```
 
 ## Deploy
@@ -129,4 +141,3 @@ docker compose logs -f backend bot
 - Hammasi **http://localhost:3010** da (backend `web/` ni ham beradi).
 - Konteynerda `HOST`, `DB_HOST`, `API_BASE` avtomatik to'g'rilanadi (`docker-compose.yml` dagi `environment`), `.env` dagi `localhost` qiymatlari ta'sir qilmaydi.
 - Sxema backend har ishga tushganda qo'llanadi (`db:setup`, qayta ishga tushirish xavfsiz). Baza ma'lumotlari `pgdata` volume'ida saqlanadi.
-- `web/Dockerfile` ishlatilmaydi — o'chirib yuborishingiz mumkin.

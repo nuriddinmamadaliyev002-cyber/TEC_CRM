@@ -214,6 +214,11 @@ img{max-width:100%}
   .rg tr.r-ok{background:color-mix(in srgb,var(--ok) 9%,var(--card))}
   .rg tr.r-part{background:color-mix(in srgb,var(--warn) 9%,var(--card))}
   .rg tr.r-no{background:color-mix(in srgb,var(--danger) 9%,var(--card))}
+  /* To'lovlar: har bir o'quvchi alohida karta, kartalar orasida masofa */
+  .card.tw:has(.rg){background:none;border:0;box-shadow:none;overflow:visible}
+  .rg tbody{display:flex;flex-direction:column;gap:14px}
+  .rg tr{border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:14px 16px;overflow:hidden}
+  .rg tr:last-child{border-bottom:1px solid var(--line)}
   .rg td.ed{padding:8px 6px;border-radius:8px}
   .rg td.qay{min-width:0}
   .rg-bar select,.rg-bar .sbox{flex:1 1 100%;max-width:none}

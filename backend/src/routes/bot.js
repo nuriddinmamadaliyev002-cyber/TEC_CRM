@@ -71,8 +71,8 @@ router.post('/lid', wrap(async (req, res) => {
   if (tg && (await pool.query("SELECT 1 FROM lidlar WHERE telegram_id=$1 AND guruh_id=$2 AND holat IN ('yangi','aloqada')", [tg, gid])).rowCount)
     return res.json({ ok: true, takror: true });
   const r = await pool.query(
-    'INSERT INTO lidlar(ism,telefon,telegram_id,username,guruh_id,fan_nomi,guruh_nomi,filial_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id',
-    [ism, tel, tg, uname(b.username), gid, g.rows[0].fan_nomi, g.rows[0].nomi, g.rows[0].filial_id]);
+    'INSERT INTO lidlar(ism,telefon,telegram_id,username,guruh_id,fan_nomi,guruh_nomi,filial_id,manzil) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id',
+    [ism, tel, tg, uname(b.username), gid, g.rows[0].fan_nomi, g.rows[0].nomi, g.rows[0].filial_id, str(b.manzil, 300)]);
   res.json({ ok: true, id: r.rows[0].id });
 }));
 

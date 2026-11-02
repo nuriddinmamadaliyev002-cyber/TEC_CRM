@@ -242,3 +242,6 @@ END $$;
 -- ═══ O'quvchilar: yashash manzili va o'qishni to'xtatish sababi (migratsiya: qayta ishga tushirish xavfsiz) ═══
 ALTER TABLE oquvchilar ADD COLUMN IF NOT EXISTS manzil       TEXT NOT NULL DEFAULT '';
 ALTER TABLE oquvchilar ADD COLUMN IF NOT EXISTS nofaol_sabab TEXT NOT NULL DEFAULT '';  -- faqat nofaol o'quvchida to'ldirilgan
+
+-- ═══ Lidlar: yashash manzili (migratsiya: qayta ishga tushirish xavfsiz) ═══
+ALTER TABLE lidlar ADD COLUMN IF NOT EXISTS manzil TEXT NOT NULL DEFAULT '';

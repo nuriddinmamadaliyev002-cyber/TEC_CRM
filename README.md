@@ -42,9 +42,10 @@ Hamma **login + parol** bilan `/index.html` sahifasidan kiradi; server rolni o'z
 Bot faqat ikki ish qiladi (menyu tugmalari):
 
 **📚 Kursga yozilish** → [filial] → fan tanlanadi → guruhlar kartochkalari (o'qituvchi, dars kunlari, vaqt, oylik to'lov, boshlanish sanasi, bo'sh joy) →
-«Shu guruhga yozilaman» → ism → telefon (kontakt tugmasi yoki yozib) → ariza admin panelning **📥 Lidlar** bo'limiga tushadi.
+«Shu guruhga yozilaman» → familiya va ism → telefon (kontakt tugmasi yoki yozib) → yashash manzili → ariza admin panelning **📥 Lidlar** bo'limiga tushadi.
 - To'lgan va yopilgan guruhlar, nofaol fanlar botda ko'rinmaydi.
 - Bir odam bir guruhga ariza qoldirgan va u hali «Yangi/Aloqada» bo'lsa, takroriy ariza qabul qilinmaydi.
+- Admin lidni **qo'lda ham qo'sha oladi** ("+ Qo'shish": familiya, ism, telefon, manzil, fan → guruh, izoh — masalan, qachondan o'qishni boshlashi). Qo'lda qo'shilgan lid doim «Yangi» holatida bo'ladi.
 - Lidda admin holatni (Yangi → Aloqada → Yozildi / Rad etildi) va izohni yuritadi, **«O'quvchiga aylantirish»** tugmasi bilan
   lid o'quvchi sifatida yaratilib, tanlagan guruhiga qo'shiladi.
 

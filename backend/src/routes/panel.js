@@ -3,7 +3,7 @@
 const { Router } = require('express');
 const pool = require('../db');
 const panelAuth = require('../middleware/panelAuth');
-const { str, int, num, date, bad, wrap } = require('../util');
+const { str, int, num, phone, date, bad, wrap } = require('../util');
 
 const router = Router();
 router.use(panelAuth);
@@ -317,7 +317,7 @@ router.put('/guruhlar/:id/davomat', wrap(async (req, res) => {
 const LID_HOLAT = ['yangi', 'aloqada', 'yozildi', 'rad'];
 router.get('/lidlar', wrap(async (req, res) => {
   const r = await pool.query(`
-    SELECT l.id, l.ism, l.telefon, l.username, l.telegram_id::text AS telegram_id, l.holat, l.izoh, l.yaratilgan,
+    SELECT l.id, l.ism, l.telefon, l.manzil, l.username, l.telegram_id::text AS telegram_id, l.holat, l.izoh, l.yaratilgan,
            l.fan_nomi, l.guruh_nomi, l.guruh_id, l.oquvchi_id,
            g.jadval, g.oylik_narx::float AS oylik_narx, TRIM(CONCAT(q.familiya, ' ', q.ism)) AS oqituvchi_nomi
       FROM lidlar l
@@ -326,6 +326,22 @@ router.get('/lidlar', wrap(async (req, res) => {
      WHERE l.filial_id=$1
      ORDER BY (l.holat='yangi') DESC, l.id DESC LIMIT 1000`, [req.filialId]);
   res.json({ ok: true, items: r.rows });
+}));
+// Admin lidni qo'lda qo'shadi (botdan tashqari kelgan ariza): holat doim «yangi». FI = «Familiya Ism».
+router.post('/lidlar', wrap(async (req, res) => {
+  const b = req.body || {};
+  const familiya = str(b.familiya, 100), ism = str(b.ism, 100), tel = phone(b.telefon), gid = int(b.guruh_id);
+  if (!familiya) return bad(res, 'Familiya majburiy');
+  if (!ism) return bad(res, 'Ism majburiy');
+  if (!tel) return bad(res, "Telefon raqami noto'g'ri");
+  if (!gid) return bad(res, 'Fan va guruhni tanlang');
+  const g = await pool.query(`SELECT g.nomi, f.nomi AS fan_nomi FROM guruhlar g JOIN fanlar f ON f.id=g.fan_id
+                               WHERE g.id=$1 AND g.filial_id=$2 AND g.holat<>'yopilgan'`, [gid, req.filialId]);
+  if (!g.rowCount) return bad(res, 'Guruh topilmadi yoki yopilgan', 404);
+  const r = await pool.query(
+    `INSERT INTO lidlar(ism,telefon,manzil,guruh_id,fan_nomi,guruh_nomi,izoh,filial_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+    [`${familiya} ${ism}`, tel, str(b.manzil, 300), gid, g.rows[0].fan_nomi, g.rows[0].nomi, str(b.izoh, 2000), req.filialId]);
+  res.json({ ok: true, id: r.rows[0].id });
 }));
 router.put('/lidlar/:id', wrap(async (req, res) => {
   const b = req.body || {}, id = int(req.params.id) || 0;
@@ -352,9 +368,9 @@ router.post('/lidlar/:id/oquvchi', wrap(async (req, res) => {
       const n = await c.query('SELECT COUNT(*)::int AS n FROM guruh_oquvchilari WHERE guruh_id=$1', [lid.guruh_id]);
       if (g.rowCount && n.rows[0].n >= g.rows[0].max_oquvchi) { await c.query('ROLLBACK'); return bad(res, "Guruh to'lgan", 409); }
     }
-    const parts = lid.ism.split(/\s+/);               // «Ali Valiyev» → ism=Ali, familiya=Valiyev
-    const o = await c.query('INSERT INTO oquvchilar(ism,familiya,telefon,filial_id) VALUES($1,$2,$3,$4) RETURNING id',
-      [parts[0], parts.slice(1).join(' '), lid.telefon, req.filialId]);
+    const parts = lid.ism.split(/\s+/);               // FI tartibi: «Valiyev Ali» → familiya=Valiyev, ism=Ali
+    const o = await c.query('INSERT INTO oquvchilar(ism,familiya,telefon,manzil,filial_id) VALUES($1,$2,$3,$4,$5) RETURNING id',
+      [parts.length > 1 ? parts.slice(1).join(' ') : parts[0], parts.length > 1 ? parts[0] : '', lid.telefon, lid.manzil, req.filialId]);
     if (lid.guruh_id && (await c.query('SELECT 1 FROM guruhlar WHERE id=$1', [lid.guruh_id])).rowCount)
       await c.query('INSERT INTO guruh_oquvchilari(guruh_id,oquvchi_id) VALUES($1,$2)', [lid.guruh_id, o.rows[0].id]);
     await c.query("UPDATE lidlar SET holat='yozildi', oquvchi_id=$2 WHERE id=$1", [id, o.rows[0].id]);

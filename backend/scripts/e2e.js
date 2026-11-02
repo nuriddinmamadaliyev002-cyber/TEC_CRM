@@ -178,21 +178,34 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
   r = await call('POST', '/bot/lid', { guruh_id: GMAT, ism: 'L', telefon: '+998901112233' }, null, BOT); t('lid: qisqa ism → 400', r.s === 400, r);
   r = await call('POST', '/bot/lid', { guruh_id: GMAT, ism: 'Lid Birinchi', telefon: '12' }, null, BOT); t('lid: noto\'g\'ri telefon → 400', r.s === 400, r);
   r = await call('POST', '/bot/lid', { guruh_id: 99999, ism: 'Lid Birinchi', telefon: '+998901112233' }, null, BOT); t('lid: mavjud bo\'lmagan guruh → 404', r.s === 404, r);
-  r = await call('POST', '/bot/lid', { guruh_id: GMAT, ism: 'Lid Birinchi', telefon: '+998 90 111-22-33', telegram_id: 777001, username: '@lid_user' }, null, BOT); t('lid yaratish (telefon tozalanadi)', r.s === 200 && r.d.id, r);
+  r = await call('POST', '/bot/lid', { guruh_id: GMAT, ism: 'Lid Birinchi', telefon: '+998 90 111-22-33', manzil: 'Baliqchi, Markaz ko\'chasi 5', telegram_id: 777001, username: '@lid_user' }, null, BOT); t('lid yaratish (telefon tozalanadi)', r.s === 200 && r.d.id, r);
   const LID1 = r.d.id;
   r = await call('POST', '/bot/lid', { guruh_id: GMAT, ism: 'Lid Birinchi', telefon: '+998901112233', telegram_id: 777001 }, null, BOT); t('lid: takroriy ariza → takror:true, yangi yozuv yo\'q', r.s === 200 && r.d.takror === true, r);
   r = await call('GET', '/lidlar', null, KA);
   { const l = r.d.items.find(x => x.id === LID1);
-    t('admin: lid ro\'yxatda (holat yangi, fan/guruh, @ olib tashlangan)', l && l.holat === 'yangi' && l.fan_nomi === 'Matematika' && l.guruh_nomi === 'MAT-1' && l.telefon === '+998901112233' && l.username === 'lid_user' && l.jadval === 'Se-Pay 10:00' && l.oqituvchi_nomi === 'Teacher Mat', l);
+    t('admin: lid ro\'yxatda (holat yangi, fan/guruh, @ olib tashlangan)', l && l.holat === 'yangi' && l.fan_nomi === 'Matematika' && l.guruh_nomi === 'MAT-1' && l.telefon === '+998901112233' && l.username === 'lid_user' && l.manzil === 'Baliqchi, Markaz ko\'chasi 5' && l.jadval === 'Se-Pay 10:00' && l.oqituvchi_nomi === 'Teacher Mat', l);
     t('lidlar bitta (takror qo\'shilmagan)', r.d.items.filter(x => x.telegram_id === '777001').length === 1, r.d.items); }
   r = await call('GET', '/stats', null, KA); t('statistika: yangi lidlar', r.d.stats.yangi_lidlar >= 1, r.d.stats);
   r = await call('PUT', `/lidlar/${LID1}`, { holat: 'xxx' }, KA); t('lid: noto\'g\'ri holat → 400', r.s === 400, r);
   r = await call('PUT', `/lidlar/${LID1}`, { holat: 'aloqada', izoh: 'Telefon qilindi' }, KA); t('lid holati/izohi', r.s === 200, r);
   r = await call('POST', `/lidlar/${LID1}/oquvchi`, {}, KA); t('lid → o\'quvchi (guruhga qo\'shiladi)', r.s === 200 && r.d.oquvchi_id && r.d.guruhga_qoshildi === true, r);
   { const oid = r.d.oquvchi_id; ids.push(oid);
-    r = await call('GET', `/guruhlar/${GMAT}/oquvchilar`, null, KA); t('yangi o\'quvchi guruhda (ism=Lid, familiya=Birinchi)', r.d.items.some(x => x.id === oid && x.ism === 'Lid' && x.familiya === 'Birinchi' && x.telefon === '+998901112233'), r); }
+    r = await call('GET', `/guruhlar/${GMAT}/oquvchilar`, null, KA); t('yangi o\'quvchi guruhda (FI tartibi: familiya=Lid, ism=Birinchi, manzil ko\'chadi)', r.d.items.some(x => x.id === oid && x.familiya === 'Lid' && x.ism === 'Birinchi' && x.telefon === '+998901112233'), r); }
   r = await call('POST', `/lidlar/${LID1}/oquvchi`, {}, KA); t('lidni ikkinchi marta aylantirib bo\'lmaydi → 409', r.s === 409, r);
   r = await call('GET', '/lidlar', null, KA); t('aylantirilgan lid holati «yozildi»', r.d.items.find(x => x.id === LID1).holat === 'yozildi', r);
+  // admin lidni qo'lda qo'shadi
+  r = await call('POST', '/lidlar', { ism: 'Ali', telefon: '+998901234567', guruh_id: GMAT }, KA); t('qo\'lda lid: familiya majburiy → 400', r.s === 400, r);
+  r = await call('POST', '/lidlar', { familiya: 'Valiyev', telefon: '+998901234567', guruh_id: GMAT }, KA); t('qo\'lda lid: ism majburiy → 400', r.s === 400, r);
+  r = await call('POST', '/lidlar', { familiya: 'Valiyev', ism: 'Ali', telefon: '12', guruh_id: GMAT }, KA); t('qo\'lda lid: noto\'g\'ri telefon → 400', r.s === 400, r);
+  r = await call('POST', '/lidlar', { familiya: 'Valiyev', ism: 'Ali', telefon: '+998901234567' }, KA); t('qo\'lda lid: guruh majburiy → 400', r.s === 400, r);
+  r = await call('POST', '/lidlar', { familiya: 'Valiyev', ism: 'Ali', telefon: '+998901234567', guruh_id: 99999 }, KA); t('qo\'lda lid: mavjud bo\'lmagan guruh → 404', r.s === 404, r);
+  r = await call('POST', '/lidlar', { familiya: 'Valiyev', ism: 'Ali', telefon: '+998 90 123-45-67', manzil: 'Andijon', guruh_id: GMAT, izoh: 'Dekabrdan boshlaydi', holat: 'rad' }, KA); t('qo\'lda lid yaratish', r.s === 200 && r.d.id, r);
+  const LIDM = r.d.id;
+  r = await call('GET', '/lidlar', null, KA);
+  { const l = r.d.items.find(x => x.id === LIDM);
+    t('qo\'lda lid: holat doim «yangi», FI, manzil, fan/guruh, izoh', l && l.holat === 'yangi' && l.ism === 'Valiyev Ali' && l.manzil === 'Andijon' && l.telefon === '+998901234567' && l.fan_nomi === 'Matematika' && l.guruh_nomi === 'MAT-1' && l.izoh === 'Dekabrdan boshlaydi' && l.telegram_id === null, l); }
+  r = await call('POST', `/lidlar/${LIDM}/oquvchi`, {}, KA); t('qo\'lda lid → o\'quvchi', r.s === 200 && r.d.oquvchi_id, r); ids.push(r.d.oquvchi_id);
+  r = await call('GET', '/oquvchilar', null, KA); t('o\'quvchiga manzil ko\'chdi', r.d.items.some(x => x.id === r.d.items.find(y => y.familiya === 'Valiyev' && y.ism === 'Ali') ?.id && x.manzil === 'Andijon'), r.d.items.slice(0, 2));
   r = await call('POST', '/lidlar/99999/oquvchi', {}, KA); t('mavjud bo\'lmagan lid → 404', r.s === 404, r);
   // guruh o'chsa ham lid qoladi
   r = await call('POST', '/bot/lid', { guruh_id: GMAT, ism: 'Lid Ikkinchi', telefon: '+998909998877', telegram_id: 777002 }, null, BOT); const LID2 = r.d.id;
@@ -277,6 +290,7 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
   r = await call('DELETE', `/tolovlar/${PAYID}`, null, KB); t('begona to\'lovni o\'chirish → 404', r.s === 404, r);
   r = await call('PUT', '/tolov-reestr', { guruh_id: GID, oquvchi_id: ids[0], oy: MONTH, qaydnoma: 'x' }, KB); t('begona reestr qaydi → 404', r.s === 404, r);
   r = await call('GET', `/tolov-reestr/tolovlar?guruh_id=${GID}&oquvchi_id=${ids[0]}&oy=${MONTH}`, null, KB); t('begona qator to\'lovlari → 404', r.s === 404, r);
+  r = await call('POST', '/lidlar', { familiya: 'Begona', ism: 'Lid', telefon: '+998901234567', guruh_id: GMAT }, KB); t('boshqa filial guruhiga qo\'lda lid → 404', r.s === 404, r);
   r = await call('PUT', `/lidlar/${LIDX}`, { holat: 'rad', izoh: 'x' }, KB); t('begona lidni tahrirlash → 404', r.s === 404, r);
   r = await call('POST', `/lidlar/${LIDX}/oquvchi`, {}, KB); t('begona lidni o\'quvchiga aylantirish → 404', r.s === 404, r);
   r = await call('DELETE', `/lidlar/${LIDX}`, null, KB); t('begona lidni o\'chirish → 404', r.s === 404, r);
@@ -362,7 +376,7 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
   r = await call('DELETE', `/fanlar/${KID}`, null, SU); t('guruh va o\'qituvchisiz fanni o\'chirish', r.s === 200, r); await call('DELETE', `/fanlar/${FID2}`, null, SU);
   for (const id of ids) await call('DELETE', `/oquvchilar/${id}`, null, SU);
   r = await call('DELETE', `/kurs-adminlar/${AID}`, null, SU); t('adminni o\'chirish', r.s === 200, r);
-  for (const id of [LID1, LID3, LIDX]) await call('DELETE', '/lidlar/' + id, null, SU);
+  for (const id of [LID1, LID3, LIDX, LIDM]) await call('DELETE', '/lidlar/' + id, null, SU);
   await call('DELETE', `/nomzodlar/${NX}`, null, SU); await call('DELETE', `/vakansiyalar/${VX}`, null, SU);
   // F2 ma'lumotlarini tozalash
   SUF = F2;

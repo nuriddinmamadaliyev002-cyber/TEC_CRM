@@ -333,17 +333,29 @@
   const small = t => `<div class="muted" style="font-size:13px">${t}</div>`;
 
   S.lidlar = () => crud({
-    title: 'Lidlar', path: '/lidlar', noAdd: true, editTitle: 'Lidni tahrirlash', delText: "Lidni o'chirasizmi?",
+    title: 'Lidlar', path: '/lidlar', addTitle: "Yangi lid (qo'lda)", editTitle: 'Lidni tahrirlash', delText: "Lidni o'chirasizmi?",
     load: async () => (await IC.api('GET', '/lidlar')).items,
     cols: [['Sana', x => dt(x.yaratilgan)],
-      ['Ism', x => `<b>${esc(x.ism)}</b>${small(tel(x.telefon))}${tgLink(x)}`],
+      ['FI', x => `<b>${esc(x.ism)}</b>${small(tel(x.telefon))}${tgLink(x)}`],
+      ['Manzil', x => esc(x.manzil) || '—'],
       ['Fan / guruh', x => `<b>${esc(x.fan_nomi)}</b>${small(esc(x.guruh_nomi) + (x.guruh_id ? '' : ' (guruh o\'chirilgan)'))}${x.jadval ? small(esc(x.jadval)) : ''}`
         + (x.guruh_id ? small(`${esc(x.oqituvchi_nomi) || ''}${x.oylik_narx ? ' · ' + esc(IC.money(x.oylik_narx)) : ''}`) : '')],
       ['Holat', x => `<span class="badge ${LID[x.holat][1]}">${LID[x.holat][0]}</span>`],
       ['Izoh', x => esc(x.izoh).slice(0, 80) || '—']],
     actions: x => `<td class="act">${x.oquvchi_id ? '' : `<button class="btn sm pri" data-o="${x.id}">O'quvchiga aylantirish</button> `}<button class="btn sm" data-e="${x.id}">Tahrirlash</button> <button class="btn sm dng" data-d="${x.id}">O'chirish</button></td>`,
-    fields: async () => [{ k: 'holat', label: 'Holat', type: 'select', req: true, options: Object.entries(LID).map(([v, [t]]) => ({ v, t })) },
-      { k: 'izoh', label: 'Izoh (aloqa natijasi)', type: 'textarea', full: true }],
+    fields: async x => {
+      if (x) return [{ k: 'holat', label: 'Holat', type: 'select', req: true, options: Object.entries(LID).map(([v, [t]]) => ({ v, t })) },
+        { k: 'izoh', label: 'Izoh (aloqa natijasi)', type: 'textarea', full: true }];
+      // Yangi lid: holat avtomatik «Yangi». Fan → guruh (guruhlar tanlangan fanga qarab chiqadi)
+      const [f, g] = await Promise.all([IC.api('GET', '/fanlar'), IC.api('GET', '/guruhlar')]);
+      const open = g.guruhlar.filter(a => a.holat !== 'yopilgan'), fanIds = new Set(open.map(a => a.fan_id));
+      return [{ k: 'familiya', label: 'Familiya', req: true }, { k: 'ism', label: 'Ism', req: true },
+        { k: 'telefon', label: 'Telefon', type: 'tel', req: true }, { k: 'manzil', label: 'Yashash manzili', autocomplete: 'off' },
+        { k: 'fan_id', label: 'Fan', type: 'select', req: true, placeholder: '— Fanni tanlang —', options: opts(f.fanlar.filter(a => a.faol && fanIds.has(a.id)), 'nomi') },
+        { k: 'guruh_id', label: 'Guruh', type: 'select', req: true, dependsOn: 'fan_id', noDepText: '— avval fanni tanlang —', emptyText: "— bu fanda ochiq guruh yo'q —",
+          options: open.map(a => ({ v: a.id, t: `${a.nomi}${a.jadval ? ' · ' + a.jadval : ''}`, group: a.fan_id })) },
+        { k: 'izoh', label: "Izoh (qachondan o'qishni boshlashi va h.k.)", type: 'textarea', full: true }];
+    },
     onAction: async (b, items, reload) => {
       if (!b.dataset.o) return;
       const x = items.find(i => String(i.id) === b.dataset.o);

@@ -117,7 +117,7 @@ async function showJob(chatId, id) {
   bot.sendMessage(chatId, lines.join('\n'), { ...HTML, reply_markup: { inline_keyboard: [[{ text: '✍️ Ariza topshirish', callback_data: 'va:' + v.id }]] } });
 }
 
-// ─── Ariza yig'ish (ism → telefon → [tajriba → rezyume]) ─────────────────────
+// ─── Ariza yig'ish (familiya-ism → telefon → [lid: manzil | nomzod: tajriba → rezyume]) ─────────────────────
 const who = msg => ({ telegram_id: msg.from.id, username: msg.from.username || '' });
 
 async function submit(msg, st) {
@@ -125,7 +125,7 @@ async function submit(msg, st) {
   state.delete(chatId);
   try {
     const r = st.type === 'lid'
-      ? await api('POST', '/bot/lid', { guruh_id: d.guruh_id, ism: d.ism, telefon: d.telefon, ...who(msg) })
+      ? await api('POST', '/bot/lid', { guruh_id: d.guruh_id, ism: d.ism, telefon: d.telefon, manzil: d.manzil, ...who(msg) })
       : await api('POST', '/bot/nomzod', { vakansiya_id: d.vakansiya_id, ism: d.ism, telefon: d.telefon, tajriba: d.tajriba,
           rezyume_file_id: d.rezyume_file_id, rezyume_nomi: d.rezyume_nomi, ...who(msg) });
     if (!r.ok) {
@@ -144,7 +144,7 @@ async function onStep(msg, st) {
   st.t = Date.now();
   switch (st.step) {
     case 'ism':
-      if (text.length < 2 || text.length > 100) return bot.sendMessage(chatId, "Iltimos, ism va familiyangizni to'g'ri yozing (2–100 belgi).");
+      if (text.length < 2 || text.length > 100) return bot.sendMessage(chatId, "Iltimos, familiya va ismingizni to'g'ri yozing (2–100 belgi).");
       st.data.ism = text; st.step = 'telefon';
       return bot.sendMessage(chatId, "📱 Telefon raqamingizni yuboring (pastdagi tugma orqali yoki yozing, masalan: +998901234567).", phoneKb);
     case 'telefon': {
@@ -152,10 +152,14 @@ async function onStep(msg, st) {
       const p = normPhone(raw);
       if (!p) return bot.sendMessage(chatId, "Telefon raqami noto'g'ri. Masalan: +998901234567", phoneKb);
       st.data.telefon = p;
-      if (st.type === 'lid') return submit(msg, st);
+      if (st.type === 'lid') { st.step = 'manzil'; return bot.sendMessage(chatId, "🏠 Yashash manzilingizni yozing (tuman/shahar, mahalla, ko'cha).", cancelKb); }
       st.step = 'tajriba';
       return bot.sendMessage(chatId, "🧑‍🏫 O'zingiz va ish tajribangiz haqida qisqacha yozing (qaysi fan, necha yil, ish joylari, sertifikatlar).", cancelKb);
     }
+    case 'manzil':
+      if (text.length < 3 || text.length > 300) return bot.sendMessage(chatId, "Iltimos, yashash manzilingizni to'g'ri yozing (3–300 belgi).", cancelKb);
+      st.data.manzil = text;
+      return submit(msg, st);
     case 'tajriba':
       if (text.length < 5) return bot.sendMessage(chatId, "Iltimos, tajribangiz haqida batafsilroq yozing.");
       st.data.tajriba = text.slice(0, 2000); st.step = 'rezyume';
@@ -194,8 +198,8 @@ bot.on('callback_query', async q => {
     if (m[1] === 'bj') return showJobList(chatId, id);
     if (m[1] === 'f') return m[3] ? showGroups(chatId, id, Number(m[3])) : undefined;
     if (m[1] === 'v') return showJob(chatId, id);
-    if (m[1] === 'g') { setState(chatId, 'lid', 'ism', { guruh_id: id }); return bot.sendMessage(chatId, "✍️ Ism va familiyangizni yozing:", cancelKb); }
-    if (m[1] === 'va') { setState(chatId, 'nomzod', 'ism', { vakansiya_id: id }); return bot.sendMessage(chatId, "✍️ Ism va familiyangizni yozing:", cancelKb); }
+    if (m[1] === 'g') { setState(chatId, 'lid', 'ism', { guruh_id: id }); return bot.sendMessage(chatId, "✍️ Familiya va ismingizni yozing:", cancelKb); }
+    if (m[1] === 'va') { setState(chatId, 'nomzod', 'ism', { vakansiya_id: id }); return bot.sendMessage(chatId, "✍️ Familiya va ismingizni yozing:", cancelKb); }
   } catch (e) { console.error('callback xato:', e.message); }
 });
 

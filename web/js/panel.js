@@ -90,7 +90,7 @@
   // To'lov turi (oyliklar hisobi shundan hisoblanadi): soatbay / oylik / foiz
   const HAQ_NOM = { soatbay: 'Soatbay', oylik: 'Oylik', foiz: 'Foiz' };
   const haqSub = x => (x.haq_turi === 'soatbay' ? `${IC.money(x.soat_stavka)} / soat` : x.haq_turi === 'oylik' ? IC.money(x.oylik_maosh) : x.haq_turi === 'foiz' ? `${x.foiz}%` : '');
-  const haqCell = x => (x.haq_turi ? `<b>${HAQ_NOM[x.haq_turi]}</b><div class="muted" style="font-size:13px">${esc(haqSub(x))}</div>` : '<span class="badge off">Belgilanmagan</span>');
+  const haqCell = x => (x.haq_turi ? `<div class="haq"><b>${HAQ_NOM[x.haq_turi]}</b><div class="muted" style="font-size:13px">${esc(haqSub(x))}</div></div>` : '<span class="badge off">Belgilanmagan</span>');
   S.oqituvchilar = () => crud({
     title: "O'qituvchilar", path: '/oqituvchilar', addTitle: "Yangi o'qituvchi", editTitle: "O'qituvchini tahrirlash", defaults: { faol: true },
     load: async () => (await IC.api('GET', '/oqituvchilar')).items,
@@ -701,16 +701,16 @@
   const guruhDetail = x => {
     if (!x.guruhlar.length) return '<div class="muted">Guruh biriktirilmagan</div>';
     const oylik = x.haq_turi === 'oylik';
-    return `<table><thead><tr><th>Guruh</th><th>Davomiylik</th><th>Darslar</th><th>Soat</th><th>Tushgan to'lov</th><th>Summa</th></tr></thead><tbody>${x.guruhlar.map(g => `<tr>
-      <td><b>${esc(g.nomi)}</b><div class="muted" style="font-size:13px">${esc(g.fan_nomi)}</div></td>
-      <td>${g.davomiylik ? g.davomiylik + ' daq' : '<span class="badge warn">Kiritilmagan</span>'}</td><td>${g.darslar}</td><td>${soatFmt(g.soat)}</td>
-      <td>${IC.money(g.tushum)}</td><td>${oylik ? '—' : IC.money(g.summa)}</td></tr>`).join('')}</tbody></table>${oylik ? `<div class="muted" style="font-size:13px;margin-top:6px">Oylik maosh qat'iy, guruhlar bo'yicha taqsimlanmaydi.</div>` : ''}`;
+    return `<table class="rt"><thead><tr><th>Guruh</th><th>Davomiylik</th><th>Darslar</th><th>Soat</th><th>Tushgan to'lov</th><th>Summa</th></tr></thead><tbody>${x.guruhlar.map(g => `<tr>
+      <td data-l=""><div class="oy-name"><b>${esc(g.nomi)}</b><div class="muted" style="font-size:13px">${esc(g.fan_nomi)}</div></div></td>
+      <td data-l="Davomiylik">${g.davomiylik ? g.davomiylik + ' daq' : '<span class="badge warn">Kiritilmagan</span>'}</td><td data-l="Darslar">${g.darslar}</td><td data-l="Soat">${soatFmt(g.soat)}</td>
+      <td data-l="Tushgan to'lov">${IC.money(g.tushum)}</td><td data-l="Summa">${oylik ? '—' : IC.money(g.summa)}</td></tr>`).join('')}</tbody></table>${oylik ? `<div class="muted" style="font-size:13px;margin-top:6px">Oylik maosh qat'iy, guruhlar bo'yicha taqsimlanmaydi.</div>` : ''}`;
   };
   S.oyliklar = async () => {
-    view.innerHTML = `<div class="head"><h2>Oyliklar</h2><div class="spacer"></div>
+    view.innerHTML = `<div class="head oy-bar"><h2>Oyliklar</h2><div class="spacer"></div>
       <div class="mnav"><button class="btn sm" id="pm" type="button" aria-label="Oldingi oy">‹</button><b id="ml"></b><button class="btn sm" id="nm" type="button" aria-label="Keyingi oy">›</button></div>
       <button class="btn" id="xl" type="button">⬇ Excel</button></div>
-      <p class="muted" style="margin:-4px 0 14px">Soat = dars davomiyligi ÷ 60. Dars sifatida guruhda davomat belgilangan kunlar hisoblanadi. Foiz — guruhlarga shu oyda tushgan to'lovdan.</p>
+      <p class="muted oy-note">Soat = dars davomiyligi ÷ 60. Dars sifatida guruhda davomat belgilangan kunlar hisoblanadi. Foiz — guruhlarga shu oyda tushgan to'lovdan.</p>
       <div id="body"><div class="empty">Yuklanmoqda…</div></div>`;
     const $ = q => view.querySelector(q);
     const draw = d => {
@@ -718,18 +718,18 @@
       const warn = d.items.filter(x => x.ogohlantirish.length).length;
       const rows = d.items.map(x => {
         const open = OYL.open.has(x.id);
-        return `<tr><td><b>${esc(full(x))}</b>${x.faol ? '' : ' <span class="badge off">Nofaol</span>'}<div class="muted" style="font-size:13px">${esc(x.fan_nomi)}</div>
-          ${x.ogohlantirish.map(w => `<div style="margin-top:4px"><span class="badge warn">${esc(w)}</span></div>`).join('')}</td>
-          <td>${haqCell(x)}</td><td>${x.darslar}</td><td>${soatFmt(x.soat)}</td><td>${IC.money(x.tushum)}</td>
-          <td><b>${x.haq_turi ? IC.money(x.summa) : '—'}</b></td>
+        return `<tr><td data-l=""><div class="oy-name"><b>${esc(full(x))}</b>${x.faol ? '' : ' <span class="badge off">Nofaol</span>'}<div class="muted" style="font-size:13px">${esc(x.fan_nomi)}</div>
+          ${x.ogohlantirish.map(w => `<div class="warn-note">${esc(w)}</div>`).join('')}</div></td>
+          <td data-l="To'lov turi">${haqCell(x)}</td><td data-l="Darslar">${x.darslar}</td><td data-l="Soat">${soatFmt(x.soat)}</td><td data-l="Tushgan to'lov">${IC.money(x.tushum)}</td>
+          <td class="oy-sum" data-l="Hisoblangan"><b>${x.haq_turi ? IC.money(x.summa) : '—'}</b></td>
           <td class="act"><button class="btn sm" data-o="${x.id}" type="button">${open ? 'Yopish' : 'Guruhlar'}</button></td></tr>` +
-          (open ? `<tr><td colspan="7">${guruhDetail(x)}</td></tr>` : '');
+          (open ? `<tr class="det"><td class="dc" colspan="7">${guruhDetail(x)}</td></tr>` : '');
       }).join('');
-      body.innerHTML = `<div class="stats" style="margin-bottom:14px">
+      body.innerHTML = `<div class="stats oy-stats" style="margin-bottom:14px">
         <div class="card stat"><b>${esc(IC.money(d.jami))}</b><span>Jami hisoblangan</span></div>
         <div class="card stat"><b>${d.items.length}</b><span>O'qituvchilar</span></div>
         <div class="card stat"><b>${warn}</b><span>E'tibor talab qiladi</span></div></div>
-        ${d.items.length ? `<div class="card tw"><table><thead><tr><th>O'qituvchi</th><th>To'lov turi</th><th>Darslar</th><th>Soat</th><th>Tushgan to'lov</th><th>Hisoblangan</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+        ${d.items.length ? `<div class="card tw"><table class="rt"><thead><tr><th>O'qituvchi</th><th>To'lov turi</th><th>Darslar</th><th>Soat</th><th>Tushgan to'lov</th><th>Hisoblangan</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
           : '<div class="card"><div class="empty">Bu oy uchun ma\'lumot yo\'q</div></div>'}`;
       body.onclick = e => {
         const b = e.target.closest('[data-o]'); if (!b) return;

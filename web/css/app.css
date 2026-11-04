@@ -95,6 +95,10 @@ input[type=checkbox]{width:auto}
 .sx{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:50%;background:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0}
 .sx:hover{background:color-mix(in srgb,var(--muted) 20%,transparent);color:var(--ink)}
 .sx:focus-visible{outline:2px solid var(--brand)}
+.warn-note{display:block;margin-top:6px;padding:6px 10px;border-radius:8px;font-size:12.5px;font-weight:600;line-height:1.35;text-align:left;background:color-mix(in srgb,var(--warn) 14%,transparent);color:var(--warn)}
+.oy-name{min-width:0;flex:1}
+.oy-note{margin:-4px 0 14px}
+tr.det>td{background:color-mix(in srgb,var(--brand) 5%,var(--card))}
 .mnav{display:flex;align-items:center;gap:6px}
 .mnav b{min-width:128px;text-align:center;font-size:16px}
 .mnav .btn{min-width:36px;justify-content:center;font-size:18px;line-height:1}
@@ -232,6 +236,19 @@ img{max-width:100%}
   .tw{overflow-x:visible}
   /* modal ichidagi oddiy jadvallar (guruh o'quvchilari, davomat) — ixcham qoladi */
   .modal table td{padding:9px 6px}
+  /* Oyliklar: sarlavha, statistika, kartalar */
+  .oy-bar h2{flex:1 1 100%}
+  .oy-bar .mnav{flex:1 1 100%;justify-content:space-between}
+  .oy-bar #xl{flex:1 1 100%;justify-content:center}
+  .oy-note{font-size:13px}
+  .oy-stats .stat:first-child{grid-column:1/-1}
+  .rt td>.haq{text-align:right}
+  .rt td.oy-sum b{font-size:17px}
+  .rt tr.det{padding:4px 14px 12px}
+  .rt td.dc{display:block;padding:6px 0 0;text-align:left}
+  .rt td.dc::before{display:none}
+  .rt td.dc .rt tr{padding:10px 0}
+  .rt td.dc .rt tr:last-child{border-bottom:0}
 }
 
 /* Katta ekran: kontent juda cho'zilib ketmasin */

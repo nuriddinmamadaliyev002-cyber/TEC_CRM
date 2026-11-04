@@ -458,3 +458,15 @@ input.has-clr,textarea.has-clr{padding-right:36px}
 @media (min-width:769px){.chart-card.wide:first-child{grid-column:auto}}
 @media (max-width:760px){.pie-grid{grid-template-columns:1fr}}
 @media (max-width:640px){.chart-card .mnav{flex:1 1 100%;justify-content:space-between}.pie-box h4{text-align:center}}
+
+/* ── Bosh sahifa kartalari: o'zgarish belgisi, bosiladigan kartalar ── */
+.stats+.stats{margin-top:12px}
+.stat.go{cursor:pointer}
+.stat.go:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.sd{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-top:8px;font-size:12.5px;line-height:1.35}
+.sd em{font-style:normal;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap}
+.sd em.up{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+.sd em.down{background:color-mix(in srgb,var(--danger) 13%,transparent);color:var(--danger)}
+.sd em.eq{background:color-mix(in srgb,var(--muted) 14%,transparent);color:var(--muted)}
+.sd small{color:var(--muted);font-size:12.5px}
+@media (max-width:640px){.stats+.stats{margin-top:10px}.sd{font-size:12px;margin-top:6px}.sd small{font-size:12px}}

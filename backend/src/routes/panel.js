@@ -814,15 +814,16 @@ router.get('/oqituvchi-hisobot/excel', wrap(async (req, res) => {
 // Eslatma: o'chirilgan o'quvchilar tarixdan yo'qoladi; qayta faollashtirilganning ketgan sanasi tozalanadi (shuning uchun eski oylar taxminiy).
 const monthShift = (oy, n) => { const t = (+oy.slice(0, 4)) * 12 + (+oy.slice(5, 7) - 1) + n; return `${Math.floor(t / 12)}-${String(t % 12 + 1).padStart(2, '0')}`; };
 const MAX_OY = 60;
+// O'quvchi «boshlagan» kuni: yaratilgan yoki birinchi guruhga qo'shilgan sananing eng erta kuni (o — oquvchilar jadvali taxallusi)
+const OQ_BOSH = `LEAST((o.yaratilgan AT TIME ZONE 'Asia/Tashkent')::date,
+  COALESCE((SELECT MIN((x.qoshilgan AT TIME ZONE 'Asia/Tashkent')::date) FROM guruh_oquvchilari x WHERE x.oquvchi_id=o.id), 'infinity'::date))`;
 router.get('/grafik/oquvchilar', wrap(async (req, res) => {
   const davr = String(req.query.davr || '12');
   if (!['6', '12', 'all'].includes(davr)) return bad(res, "Davr noto'g'ri");
   const cur = todayISO().slice(0, 7);
   const COMMON = `
     WITH s AS (
-      SELECT o.faol, o.nofaol_sana,
-             LEAST((o.yaratilgan AT TIME ZONE 'Asia/Tashkent')::date,
-                   COALESCE((SELECT MIN((x.qoshilgan AT TIME ZONE 'Asia/Tashkent')::date) FROM guruh_oquvchilari x WHERE x.oquvchi_id=o.id), 'infinity'::date)) AS bosh
+      SELECT o.faol, o.nofaol_sana, ${OQ_BOSH} AS bosh
         FROM oquvchilar o WHERE o.filial_id=$1)`;
   let n = davr === 'all' ? 12 : Number(davr);
   if (davr === 'all') { // eng birinchi o'quvchi boshlagan oydan (ko'pi bilan MAX_OY oy)
@@ -846,23 +847,30 @@ router.get('/grafik/oquvchilar', wrap(async (req, res) => {
 //    Uchalasi yig'indisi = oylik reja (narxlar yig'indisi). yigilish = to'langan ÷ reja.
 //  • To'lov usuli: shu oyda kiritilgan to'lovlar naqd / karta / o'tkazma bo'yicha.
 const round2 = n => Math.round(n * 100) / 100;
+const sumBy = (a, f) => a.reduce((t, x) => t + f(x), 0);
+// Reestr qatorlaridan oylik reja hisobi (faqat oylik narxi bor qatorlar). Grafik va bosh sahifa kartalari shuni ishlatadi.
+function rejaHisobot(rows) {
+  const plan = rows.filter(x => x.narx > 0);
+  const qis = plan.filter(x => x.holat === 'qisman'), yoq = plan.filter(x => x.holat === 'yoq');
+  const reja = sumBy(plan, x => x.narx), tolangan = sumBy(plan, x => Math.min(x.tolangan, x.narx));
+  return { reja: round2(reja), tolangan: round2(tolangan),
+    qisman_qarz: round2(sumBy(qis, x => x.qarz)), yoq_qarz: round2(sumBy(yoq, x => x.qarz)),
+    oquvchi: { jami: plan.length, tolagan: plan.length - qis.length - yoq.length, qisman: qis.length, yoq: yoq.length },
+    yigilish: reja > 0 ? Math.round(tolangan / reja * 1000) / 10 : null };
+}
 router.get('/grafik/tolovlar', wrap(async (req, res) => {
   const oy = String(req.query.oy || '');
   if (!oyOk(oy)) return bad(res, "Oy noto'g'ri (kelajak oyini ko'rib bo'lmaydi)");
   const rows = await reestrRows(oy, req.filialId);
-  const plan = rows.filter(x => x.narx > 0);
-  const sum = (a, f) => a.reduce((t, x) => t + f(x), 0);
-  const qis = plan.filter(x => x.holat === 'qisman'), yoq = plan.filter(x => x.holat === 'yoq');
-  const reja = sum(plan, x => x.narx), tolangan = sum(plan, x => Math.min(x.tolangan, x.narx));
-  res.json({ ok: true, oy, reja: round2(reja), tolangan: round2(tolangan),
-    qisman_qarz: round2(sum(qis, x => x.qarz)), yoq_qarz: round2(sum(yoq, x => x.qarz)),
-    oquvchi: { jami: plan.length, tolagan: plan.length - qis.length - yoq.length, qisman: qis.length, yoq: yoq.length },
-    yigilish: reja > 0 ? Math.round(tolangan / reja * 1000) / 10 : null,
-    usul: Object.fromEntries(USULLAR.map(u => [u, round2(sum(rows, x => x.usul_summa[u]))])) });
+  res.json({ ok: true, oy, ...rejaHisobot(rows), usul: Object.fromEntries(USULLAR.map(u => [u, round2(sumBy(rows, x => x.usul_summa[u]))])) });
 }));
 
 // ═══ STATISTIKA ══════════════════════════════════════════════════════════════
 router.get('/stats', wrap(async (req, res) => {
+  // Taqqoslash uchun: o'tgan oyning SHU KUNIGACHA tushumi (yarim oyni to'liq oy bilan solishtirmaymiz) va o'tgan oy oxiridagi faol o'quvchilar
+  const bugun = todayISO(), oy = bugun.slice(0, 7), oldingi = monthShift(oy, -1);
+  const kunlar = new Date(+oldingi.slice(0, 4), +oldingi.slice(5), 0).getDate();
+  const otganDan = oldingi + '-01', otganGacha = oldingi + '-' + String(Math.min(+bugun.slice(8), kunlar)).padStart(2, '0');
   const r = await pool.query(`
     SELECT
       (SELECT COUNT(*)::int FROM fanlar WHERE faol AND filial_id=$1)         AS fanlar,
@@ -871,12 +879,18 @@ router.get('/stats', wrap(async (req, res) => {
       (SELECT COUNT(*)::int FROM oqituvchilar WHERE faol AND filial_id=$1)   AS oqituvchilar,
       (SELECT COALESCE(SUM(t.summa),0)::float FROM tolovlar t JOIN oquvchilar o ON o.id=t.oquvchi_id
         WHERE o.filial_id=$1 AND date_trunc('month',t.sana)=date_trunc('month',(NOW() AT TIME ZONE 'Asia/Tashkent')::date)) AS oy_tushum,
+      (SELECT COALESCE(SUM(t.summa),0)::float FROM tolovlar t JOIN oquvchilar o ON o.id=t.oquvchi_id
+        WHERE o.filial_id=$1 AND t.sana BETWEEN $2::date AND $3::date) AS oy_tushum_otgan,
+      (SELECT COUNT(*)::int FROM (SELECT o.faol, o.nofaol_sana, ${OQ_BOSH} AS bosh FROM oquvchilar o WHERE o.filial_id=$1) s
+        WHERE s.bosh < $4::date AND (s.faol OR s.nofaol_sana >= $4::date)) AS oquvchilar_otgan,
       (SELECT COALESCE(SUM(t.summa),0)::float FROM tolovlar t JOIN oquvchilar o ON o.id=t.oquvchi_id WHERE o.filial_id=$1) AS jami_tushum,
       (SELECT COUNT(*)::int FROM kurs_adminlar WHERE faol AND filial_id=$1)  AS kurs_adminlar,
       (SELECT COUNT(*)::int FROM lidlar WHERE holat='yangi' AND filial_id=$1)    AS yangi_lidlar,
       (SELECT COUNT(*)::int FROM nomzodlar WHERE holat='yangi' AND filial_id=$1) AS yangi_nomzodlar,
-      (SELECT COUNT(*)::int FROM vakansiyalar WHERE faol AND filial_id=$1)       AS vakansiyalar`, [req.filialId]);
-  res.json({ ok: true, filial: { id: req.filialId, nomi: req.filialNomi }, stats: r.rows[0] });
+      (SELECT COUNT(*)::int FROM vakansiyalar WHERE faol AND filial_id=$1)       AS vakansiyalar`, [req.filialId, otganDan, otganGacha, oy + '-01']);
+  const h = rejaHisobot(await reestrRows(oy, req.filialId));
+  res.json({ ok: true, filial: { id: req.filialId, nomi: req.filialNomi },
+    stats: { ...r.rows[0], oy_hisobot: { reja: h.reja, tolangan: h.tolangan, qarz: round2(h.qisman_qarz + h.yoq_qarz), qarzdor: h.oquvchi.qisman + h.oquvchi.yoq, yigilish: h.yigilish } } });
 }));
 
 module.exports = router;

@@ -221,14 +221,28 @@
     return load();
   }
 
+  // Kartadagi o'zgarish belgisi: [sinf, matn] yoki null. up = yaxshi (yashil), down = yomon (qizil).
+  const dPct = (now, prev) => { if (prev > 0) { const p = Math.round((now - prev) / prev * 100); return [p > 0 ? 'up' : p < 0 ? 'down' : 'eq', (p > 0 ? '▲ +' : p < 0 ? '▼ −' : '= ') + Math.abs(p) + '%']; } return now > 0 ? ['up', '▲ yangi'] : null; };
+  const dCnt = (now, prev) => { const d = now - prev; return [d > 0 ? 'up' : d < 0 ? 'down' : 'eq', d > 0 ? '▲ +' + d : d < 0 ? '▼ −' + Math.abs(d) : "= o'zgarmagan"]; };
+
   S.dash = async () => {
-    const s = (await IC.api('GET', '/stats')).stats;
-    const it = [['Faol fanlar', s.fanlar], ['Faol guruhlar', s.guruhlar], ["O'quvchilar", s.oquvchilar], ["O'qituvchilar", s.oqituvchilar],
-      ['Yangi lidlar', s.yangi_lidlar], ['Yangi nomzodlar', s.yangi_nomzodlar],
-      ['Shu oy tushum', IC.money(s.oy_tushum)], ['Jami tushum', IC.money(s.jami_tushum)]];
-    view.innerHTML = `<div class="head"><h2>Bosh sahifa</h2></div><div class="stats">${it.map(([l, v]) => `<div class="card stat"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('')}</div>
+    const s = (await IC.api('GET', '/stats')).stats, h = s.oy_hisobot;
+    // [yorliq, qiymat, o'tish sahifasi, {d: o'zgarish, note: izoh, h: to'lovlar filtri}]
+    const card = ([l, v, go, o = {}]) => `<div class="card stat go" role="link" tabindex="0" data-go="${go}"${o.h ? ` data-h="${o.h}"` : ''}><b>${esc(v)}</b><span>${esc(l)}</span>`
+      + (o.d || o.note ? `<div class="sd">${o.d ? `<em class="${o.d[0]}">${o.d[1]}</em>` : ''}${o.note ? `<small>${esc(o.note)}</small>` : ''}</div>` : '') + '</div>';
+    const top = [['Faol fanlar', s.fanlar, 'fanlar'], ['Faol guruhlar', s.guruhlar, 'guruhlar'],
+      ["O'quvchilar", s.oquvchilar, 'oquvchilar', { d: dCnt(s.oquvchilar, s.oquvchilar_otgan), note: "o'tgan oy oxiriga nisbatan" }],
+      ["O'qituvchilar", s.oqituvchilar, 'oqituvchilar'], ['Yangi lidlar', s.yangi_lidlar, 'lidlar'], ['Yangi nomzodlar', s.yangi_nomzodlar, 'nomzodlar']];
+    const pay = [['Shu oy tushum', IC.money(s.oy_tushum), 'tolovlar', { d: dPct(s.oy_tushum, s.oy_tushum_otgan), note: `o'tgan oyning shu kunigacha: ${IC.money(s.oy_tushum_otgan)}` }],
+      ["Shu oy yig'ilish", h.yigilish == null ? '—' : pctTxt(h.yigilish), 'tolovlar', { note: h.reja > 0 ? `Reja: ${IC.money(h.reja)}` : 'Oylik narx belgilanmagan' }],
+      ['Shu oy qarzi', IC.money(h.qarz), 'tolovlar', { h: 'qarzdor', note: h.qarzdor ? `${h.qarzdor} ta o'quvchi qarzdor` : (h.reja > 0 ? "Qarz yo'q" : '') }],
+      ['Jami tushum', IC.money(s.jami_tushum), 'tolovlar']];
+    view.innerHTML = `<div class="head"><h2>Bosh sahifa</h2></div><div class="stats" id="st1">${top.map(card).join('')}</div><div class="stats" id="st2">${pay.map(card).join('')}</div>
       <div class="dash-charts"><section class="card chart-card wide" id="chOq" aria-label="O'quvchilar soni dinamikasi"></section>
       <section class="card chart-card wide" id="chPay" aria-label="To'lovlar hisoboti"></section></div>`;
+    // Karta bosilsa — tegishli bo'limga o'tadi (to'lov kartalarida joriy oy; «qarzi» kartasida «Qarzdor» filtri bilan)
+    const open = c => { if (!c) return; const k = c.dataset.go; if (k === 'tolovlar') Object.assign(RS, { f: '', g: '', t: '', u: '', q: '', h: c.dataset.h || '', oy: thisMonth() }); go(k); };
+    view.querySelectorAll('.stats').forEach(g => { g.onclick = e => open(e.target.closest('.stat.go')); g.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(e.target.closest('.stat.go')); } }; });
     studentChart(view.querySelector('#chOq')); payCharts(view.querySelector('#chPay')); // grafiklar alohida yuklanadi — kartalar kutib turmaydi
   };
 

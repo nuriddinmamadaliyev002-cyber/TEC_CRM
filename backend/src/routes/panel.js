@@ -806,6 +806,40 @@ router.get('/oqituvchi-hisobot/excel', wrap(async (req, res) => {
   res.end();
 }));
 
+// ═══ GRAFIK: o'quvchilar soni oylar bo'yicha ═════════════════════════════════
+// Tarix jadvali yo'q — oldingi oylar mavjud sanalardan qayta hisoblanadi (to'lov reestridagi qoida bilan bir xil):
+//  • boshlagan = o'quvchi yaratilgan yoki birinchi guruhga qo'shilgan sananing eng erta kuni;
+//  • «jami» (oy oxirida faol) = oy tugamasidan oldin boshlagan VA (hozir faol YOKI nofaol qilingan sana shu oydan KEYIN);
+//  • «yangi» = boshlagan oyi shu oy; «ketgan» = nofaol qilingan oyi shu oy.
+// Eslatma: o'chirilgan o'quvchilar tarixdan yo'qoladi; qayta faollashtirilganning ketgan sanasi tozalanadi (shuning uchun eski oylar taxminiy).
+const monthShift = (oy, n) => { const t = (+oy.slice(0, 4)) * 12 + (+oy.slice(5, 7) - 1) + n; return `${Math.floor(t / 12)}-${String(t % 12 + 1).padStart(2, '0')}`; };
+const MAX_OY = 60;
+router.get('/grafik/oquvchilar', wrap(async (req, res) => {
+  const davr = String(req.query.davr || '12');
+  if (!['6', '12', 'all'].includes(davr)) return bad(res, "Davr noto'g'ri");
+  const cur = todayISO().slice(0, 7);
+  const COMMON = `
+    WITH s AS (
+      SELECT o.faol, o.nofaol_sana,
+             LEAST((o.yaratilgan AT TIME ZONE 'Asia/Tashkent')::date,
+                   COALESCE((SELECT MIN((x.qoshilgan AT TIME ZONE 'Asia/Tashkent')::date) FROM guruh_oquvchilari x WHERE x.oquvchi_id=o.id), 'infinity'::date)) AS bosh
+        FROM oquvchilar o WHERE o.filial_id=$1)`;
+  let n = davr === 'all' ? 12 : Number(davr);
+  if (davr === 'all') { // eng birinchi o'quvchi boshlagan oydan (ko'pi bilan MAX_OY oy)
+    const f = await pool.query(`${COMMON} SELECT to_char(MIN(bosh), 'YYYY-MM') AS oy FROM s`, [req.filialId]);
+    if (f.rows[0].oy) { const a = +f.rows[0].oy.slice(0, 4) * 12 + +f.rows[0].oy.slice(5) - 1, b = +cur.slice(0, 4) * 12 + +cur.slice(5) - 1; n = Math.min(Math.max(b - a + 1, 1), MAX_OY); }
+  }
+  const start = monthShift(cur, -(n - 1));
+  const r = await pool.query(`${COMMON},
+    m AS (SELECT d::date AS bosh FROM generate_series($2::date, $3::date, interval '1 month') d)
+    SELECT to_char(m.bosh, 'YYYY-MM') AS oy,
+      COUNT(*) FILTER (WHERE s.bosh < m.bosh + interval '1 month' AND (s.faol OR s.nofaol_sana >= m.bosh + interval '1 month'))::int AS jami,
+      COUNT(*) FILTER (WHERE s.bosh >= m.bosh AND s.bosh < m.bosh + interval '1 month')::int AS yangi,
+      COUNT(*) FILTER (WHERE NOT s.faol AND s.nofaol_sana >= m.bosh AND s.nofaol_sana < m.bosh + interval '1 month')::int AS ketgan
+      FROM m LEFT JOIN s ON TRUE GROUP BY m.bosh ORDER BY m.bosh`, [req.filialId, start + '-01', cur + '-01']);
+  res.json({ ok: true, davr, items: r.rows });
+}));
+
 // ═══ STATISTIKA ══════════════════════════════════════════════════════════════
 router.get('/stats', wrap(async (req, res) => {
   const r = await pool.query(`

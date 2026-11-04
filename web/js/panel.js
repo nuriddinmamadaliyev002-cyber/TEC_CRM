@@ -69,12 +69,97 @@
   // ═══ Bo'limlar ═══
   const S = {};
 
+  // ═══ Bosh sahifa: o'quvchilar soni dinamikasi (qo'lda SVG, kutubxonasiz) ═══
+  // Yuqorida — oy oxiridagi faol o'quvchilar chizig'i; pastda — har oyda yangi (yashil, yuqoriga) va ketgan (qizil, pastga) o'quvchilar.
+  // Grafik konteyner kengligiga qarab qayta chiziladi; sichqoncha/barmoq bilan oy ustiga bosilsa izoh chiqadi.
+  const OY_QISQA = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'];
+  const OY_TO_LIQ = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
+  const DASH = { davr: '12' };
+  const niceStep = v => { if (v <= 1) return 1; const e = Math.pow(10, Math.floor(Math.log10(v))), f = v / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e; };
+  const sgn = n => (n > 0 ? '+' + n : n < 0 ? '−' + Math.abs(n) : '0');
+
+  function studentChart(box) {
+    let data = [], tipIdx = -1;
+    const draw = () => {
+      const svgHost = box.querySelector('.ch-svg'); if (!svgHost || !data.length) return;
+      const W = Math.max(Math.floor(svgHost.clientWidth), 260), narrow = W < 520, n = data.length;
+      const padL = narrow ? 30 : 38, padR = 10, padT = 12, lineH = narrow ? 150 : 200, gap = 16, barH = narrow ? 56 : 68, xH = 38;
+      const H = padT + lineH + gap + barH + xH, plotX = padL + 12, plotW = W - padL - padR - 24;
+      const X = i => (n === 1 ? plotX + plotW / 2 : plotX + i * plotW / (n - 1));
+      const mx = Math.max(...data.map(d => d.jami), 0), step = niceStep(mx / 4), top = Math.max(step * Math.ceil(mx / step), step * 2);
+      const Y = v => padT + lineH - (v / top) * lineH;
+      const ticks = []; for (let t = 0; t <= top; t += step) ticks.push(t);
+      const bm = Math.max(...data.map(d => Math.max(d.yangi, d.ketgan)), 1), zero = padT + lineH + gap + barH / 2, bh = v => (v / bm) * (barH / 2 - 3);
+      const bw = Math.max(Math.min(18, (n === 1 ? plotW : plotW / (n - 1)) * 0.5), 4);
+      const skip = Math.max(1, Math.ceil(n / Math.max(Math.floor(plotW / 44), 1)));
+      const pts = data.map((d, i) => `${X(i).toFixed(1)},${Y(d.jami).toFixed(1)}`);
+      const area = n > 1 ? `<path class="ch-area" d="M${X(0).toFixed(1)},${Y(0)} L${pts.join(' L')} L${X(n - 1).toFixed(1)},${Y(0)} Z"/>` : '';
+      let g = ticks.map(t => `<line class="ch-grid" x1="${padL}" x2="${W - padR}" y1="${Y(t)}" y2="${Y(t)}"/><text class="ch-tx" x="${padL - 6}" y="${Y(t) + 4}" text-anchor="end">${t}</text>`).join('');
+      g += `<line class="ch-zero" x1="${padL}" x2="${W - padR}" y1="${zero}" y2="${zero}"/>`;
+      g += area + (n > 1 ? `<polyline class="ch-line" points="${pts.join(' ')}"/>` : '');
+      g += data.map((d, i) => `<circle class="ch-dot" cx="${X(i).toFixed(1)}" cy="${Y(d.jami).toFixed(1)}" r="${n > 24 ? 2 : 3.5}"/>`).join('');
+      g += data.map((d, i) => `${d.yangi ? `<rect class="ch-new" x="${(X(i) - bw / 2).toFixed(1)}" y="${(zero - bh(d.yangi)).toFixed(1)}" width="${bw.toFixed(1)}" height="${bh(d.yangi).toFixed(1)}" rx="2"/>` : ''}`
+        + `${d.ketgan ? `<rect class="ch-left" x="${(X(i) - bw / 2).toFixed(1)}" y="${zero}" width="${bw.toFixed(1)}" height="${bh(d.ketgan).toFixed(1)}" rx="2"/>` : ''}`).join('');
+      let firstLbl = true; // yil: birinchi ko'ringan oy ostida va har yanvarda
+      g += data.map((d, i) => {
+        if ((n - 1 - i) % skip) return ''; // oxirgi oy doim ko'rinadi, undan orqaga skip oraliqda
+        const m = +d.oy.slice(5) - 1, yr = firstLbl || m === 0; firstLbl = false;
+        return `<text class="ch-tx" x="${X(i).toFixed(1)}" y="${H - xH + 16}" text-anchor="middle">${OY_QISQA[m]}</text>` + (yr ? `<text class="ch-tx ch-yr" x="${X(i).toFixed(1)}" y="${H - xH + 30}" text-anchor="middle">${d.oy.slice(0, 4)}</text>` : '');
+      }).join('');
+      g += `<line class="ch-guide hidden" y1="${padT}" y2="${H - xH + 2}"/><circle class="ch-hot hidden" r="6"/>`;
+      svgHost.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="O'quvchilar soni oylar bo'yicha">${g}</svg><div class="ch-tip hidden" role="status"></div>`;
+      const svg = svgHost.firstChild, tip = svgHost.querySelector('.ch-tip'), guide = svg.querySelector('.ch-guide'), hot = svg.querySelector('.ch-hot');
+      const hide = () => { tipIdx = -1; tip.classList.add('hidden'); guide.classList.add('hidden'); hot.classList.add('hidden'); };
+      const show = i => {
+        tipIdx = i; const d = data[i], x = X(i), m = +d.oy.slice(5) - 1;
+        guide.setAttribute('x1', x); guide.setAttribute('x2', x); hot.setAttribute('cx', x); hot.setAttribute('cy', Y(d.jami));
+        guide.classList.remove('hidden'); hot.classList.remove('hidden');
+        tip.innerHTML = `<b>${OY_TO_LIQ[m]} ${d.oy.slice(0, 4)}</b><div>Faol: <b>${d.jami}</b> ta</div><div><span class="ok">${sgn(d.yangi)} yangi</span> · <span class="bad">${d.ketgan ? '−' + d.ketgan : '0'} ketgan</span></div>`;
+        tip.classList.remove('hidden');
+        const tw = tip.offsetWidth; tip.style.left = Math.round(Math.min(Math.max(x - tw / 2, 0), W - tw)) + 'px'; tip.style.top = '0px';
+      };
+      const idxAt = e => { const r = svg.getBoundingClientRect(); const px = e.clientX - r.left; let best = 0, bd = 1e9; for (let i = 0; i < n; i++) { const dd = Math.abs(X(i) - px); if (dd < bd) { bd = dd; best = i; } } return best; };
+      svg.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' || e.buttons) show(idxAt(e)); });
+      svg.addEventListener('pointerdown', e => show(idxAt(e)));
+      svg.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') hide(); });
+      if (tipIdx >= 0 && tipIdx < n) show(tipIdx);
+    };
+    const summary = () => {
+      const last = data[data.length - 1], prev = data[data.length - 2], d = prev ? last.jami - prev.jami : 0;
+      const yangi = data.reduce((a, x) => a + x.yangi, 0), ketgan = data.reduce((a, x) => a + x.ketgan, 0);
+      box.querySelector('.ch-sum').innerHTML = `<div><span class="ch-big">${last.jami}</span> <span class="muted">faol o'quvchi</span>`
+        + `${prev ? ` <span class="badge ${d > 0 ? 'ok' : d < 0 ? 'off' : ''}">${d > 0 ? '▲' : d < 0 ? '▼' : '='} ${sgn(d)} o'tgan oyga nisbatan</span>` : ''}</div>`
+        + `<div class="muted ch-sub">Davr ichida: <span class="ok">+${yangi} yangi</span> · <span class="bad">−${ketgan} ketgan</span></div>`;
+    };
+    box.innerHTML = `<div class="ch-head"><h3>O'quvchilar soni dinamikasi</h3><div class="ch-range" role="group" aria-label="Davr">`
+      + [['6', '6 oy'], ['12', '12 oy'], ['all', 'Hammasi']].map(([k, t]) => `<button type="button" class="chip${DASH.davr === k ? ' on' : ''}" data-d="${k}">${t}</button>`).join('') + `</div></div>`
+      + `<div class="ch-sum"></div><div class="ch-svg"><div class="empty">Yuklanmoqda…</div></div>`
+      + `<div class="ch-legend"><span><i class="lg line"></i>Faol (oy oxirida)</span><span><i class="lg new"></i>Yangi</span><span><i class="lg left"></i>Ketgan</span></div>`;
+    const load = async () => {
+      const host = box.querySelector('.ch-svg'); host.innerHTML = '<div class="empty">Yuklanmoqda…</div>';
+      try {
+        data = (await IC.api('GET', '/grafik/oquvchilar?davr=' + DASH.davr)).items;
+        if (!data.length || data.every(d => !d.jami && !d.yangi && !d.ketgan)) { host.innerHTML = "<div class=\"empty\">Hali o'quvchilar yo'q — grafik o'quvchi qo'shilgach chiqadi</div>"; box.querySelector('.ch-sum').innerHTML = ''; data = []; return; }
+        summary(); tipIdx = -1; draw();
+      } catch (x) { host.innerHTML = `<div class="empty">${esc(x.message)}</div>`; }
+    };
+    box.querySelector('.ch-range').onclick = e => {
+      const b = e.target.closest('[data-d]'); if (!b || b.dataset.d === DASH.davr) return;
+      DASH.davr = b.dataset.d; box.querySelectorAll('.ch-range .chip').forEach(c => c.classList.toggle('on', c === b)); load();
+    };
+    // Kenglik o'zgarsa (telefonni aylantirish, oyna o'lchami) qayta chizamiz
+    if (window.ResizeObserver) { let w = 0; const ro = new ResizeObserver(() => { if (!box.isConnected) return ro.disconnect(); const nw = box.clientWidth; if (nw !== w) { w = nw; draw(); } }); ro.observe(box); }
+    return load();
+  }
+
   S.dash = async () => {
     const s = (await IC.api('GET', '/stats')).stats;
     const it = [['Faol fanlar', s.fanlar], ['Faol guruhlar', s.guruhlar], ["O'quvchilar", s.oquvchilar], ["O'qituvchilar", s.oqituvchilar],
       ['Yangi lidlar', s.yangi_lidlar], ['Yangi nomzodlar', s.yangi_nomzodlar],
       ['Shu oy tushum', IC.money(s.oy_tushum)], ['Jami tushum', IC.money(s.jami_tushum)]];
-    view.innerHTML = `<div class="head"><h2>Bosh sahifa</h2></div><div class="stats">${it.map(([l, v]) => `<div class="card stat"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('')}</div>`;
+    view.innerHTML = `<div class="head"><h2>Bosh sahifa</h2></div><div class="stats">${it.map(([l, v]) => `<div class="card stat"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('')}</div>
+      <div class="dash-charts"><section class="card chart-card" id="chOq" aria-label="O'quvchilar soni dinamikasi"></section></div>`;
+    studentChart(view.querySelector('#chOq')); // grafik alohida yuklanadi — kartalar kutib turmaydi
   };
 
   S.fanlar = () => crud({

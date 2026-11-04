@@ -396,3 +396,39 @@ input.has-clr,textarea.has-clr{padding-right:36px}
   .nz td.act{padding-top:12px}
   .nz td.act .btn{flex:1 1 auto;justify-content:center}
 }
+
+/* ── Bosh sahifa: o'quvchilar dinamikasi grafigi ── */
+.dash-charts{display:grid;gap:14px;margin-top:14px;grid-template-columns:minmax(0,1fr)}
+.chart-card{padding:16px 18px}
+.ch-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.ch-head h3{font-size:16px}
+.ch-range{display:flex;gap:6px}
+.ch-range .chip{padding:6px 12px}
+.ch-sum{margin:4px 0 8px;min-height:20px}
+.ch-big{font-size:28px;font-weight:800;letter-spacing:-.5px;margin-right:2px}
+.ch-sub{font-size:13px;margin-top:2px}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--danger);font-weight:600}
+.ch-svg{position:relative;width:100%}
+.ch-svg svg{display:block;max-width:100%;touch-action:pan-y;overflow:visible}
+.ch-grid{stroke:var(--line);stroke-width:1}
+.ch-zero{stroke:color-mix(in srgb,var(--muted) 45%,var(--line));stroke-width:1}
+.ch-tx{fill:var(--muted);font-size:12px}
+.ch-yr{font-size:11px;opacity:.8}
+.ch-line{fill:none;stroke:var(--brand);stroke-width:2.5;stroke-linejoin:round;stroke-linecap:round}
+.ch-area{fill:var(--brand);opacity:.09}
+.ch-dot{fill:#fff;stroke:var(--brand);stroke-width:2}
+.ch-new{fill:var(--ok)}.ch-left{fill:var(--danger)}
+.ch-guide{stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3}
+.ch-hot{fill:var(--brand);stroke:#fff;stroke-width:2}
+.ch-tip{position:absolute;pointer-events:none;background:var(--ink);color:#fff;border-radius:10px;padding:8px 11px;font-size:13px;line-height:1.45;white-space:nowrap;box-shadow:var(--shadow);z-index:2}
+.ch-tip .ok{color:#7be0b5}.ch-tip .bad{color:#ff9a9a}
+.ch-legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px;font-size:13px;color:var(--muted)}
+.ch-legend span{display:inline-flex;align-items:center;gap:6px}
+.lg{display:inline-block;width:12px;height:12px;border-radius:3px}
+.lg.line{height:3px;width:16px;border-radius:2px;background:var(--brand)}.lg.new{background:var(--ok)}.lg.left{background:var(--danger)}
+@media (max-width:640px){
+  .chart-card{padding:14px 12px}
+  .ch-head h3{flex:1 1 100%}
+  .ch-range{flex:1 1 100%}.ch-range .chip{flex:1 1 0;min-height:38px}
+  .ch-big{font-size:24px}
+}

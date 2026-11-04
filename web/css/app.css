@@ -370,3 +370,29 @@ input.has-clr,textarea.has-clr{padding-right:36px}
 .cam-face img{width:56px;height:56px;object-fit:cover;border-radius:8px;flex:none}
 .cam-face select{min-width:0;flex:1}
 .cam-modal .subtabs{margin-bottom:10px}
+
+/* ── Nomzodlar: FI + aloqa (telefon / Telegram) ── */
+.ct{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+.ct-l{display:inline-flex;align-items:center;gap:6px;max-width:240px;padding:3px 11px;border:1px solid var(--line);border-radius:10px;background:var(--card);
+  color:var(--ink);font-size:13.5px;font-weight:600;text-decoration:none;overflow-wrap:anywhere}
+.ct-l i{font-style:normal;font-size:13px;flex:none}
+.ct-l.tg{color:#1a7bb5}
+.ct-l:hover,.ct-l:focus-visible{border-color:var(--brand);color:var(--brand)}
+.ct-n{font-size:12.5px}
+.tj{white-space:pre-wrap;max-width:320px}
+.hs small{display:block}
+
+@media (max-width:640px){
+  /* Nomzod kartasi: tepada FI (katta), ostida sana, keyin aloqa tugmalari, tajriba, holat, amallar */
+  .nz tr{display:flex;flex-direction:column}
+  .nz td.fi{order:-2;display:block;padding:0 0 2px;text-align:left;font-size:18px}
+  .nz td.fi::before{display:none}
+  .nz td:first-child{order:-1;padding:0 0 10px;font-size:13px;color:var(--muted)}
+  .nz td.ct-td,.nz td.tj-td,.nz td.fg-td{flex-direction:column;align-items:stretch;gap:5px;text-align:left}
+  .nz td.ct-td::before,.nz td.tj-td::before,.nz td.fg-td::before{max-width:none}
+  .nz .ct{align-items:stretch;gap:8px}
+  .nz .ct-l{max-width:none;min-height:42px;padding:9px 14px;font-size:15px}
+  .nz .tj{max-width:none}
+  .nz td.act{padding-top:12px}
+  .nz td.act .btn{flex:1 1 auto;justify-content:center}
+}

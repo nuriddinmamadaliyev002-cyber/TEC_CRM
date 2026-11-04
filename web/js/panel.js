@@ -26,7 +26,7 @@
       <input class="search" id="q" placeholder="Qidirish…" aria-label="Qidirish">
       ${cfg.noAdd ? '' : `<button class="btn pri" id="add" type="button">+ Qo'shish</button>`}</div>
       ${tabs ? `<div class="subtabs" role="tablist">${tabs.map(t => `<button class="subtab" role="tab" type="button" data-t="${t.k}">${t.t} <span class="n" data-n="${t.k}"></span></button>`).join('')}</div>` : ''}
-      <div class="card tw"><table class="rt"><thead><tr>${cfg.cols.map(c => `<th>${c[0]}</th>`).join('')}<th></th></tr></thead><tbody id="rows"></tbody></table>
+      <div class="card tw"><table class="rt${cfg.cls ? ' ' + cfg.cls : ''}"><thead><tr>${cfg.cols.map(c => `<th>${c[0]}</th>`).join('')}<th></th></tr></thead><tbody id="rows"></tbody></table>
       <div class="empty hidden" id="empty">Hozircha ma'lumot yo'q</div></div>`;
     const rows = view.querySelector('#rows');
     const draw = () => {
@@ -39,7 +39,7 @@
       view.querySelector('#cnt').textContent = inTab.length ? `(${f.length})` : '';
       view.querySelector('#empty').textContent = tab && tab.empty && !q ? tab.empty : "Hozircha ma'lumot yo'q";
       view.querySelector('#empty').classList.toggle('hidden', f.length > 0);
-      rows.innerHTML = f.map(x => `<tr>${cfg.cols.map((c, i) => `<td data-l="${i ? esc(c[0]) : ''}">${c[1](x)}</td>`).join('')}${cfg.actions ? cfg.actions(x) : act(x.id)}</tr>`).join('');
+      rows.innerHTML = f.map(x => `<tr>${cfg.cols.map((c, i) => `<td data-l="${i ? esc(c[0]) : ''}"${c[2] ? ` class="${c[2]}"` : ''}>${c[1](x)}</td>`).join('')}${cfg.actions ? cfg.actions(x) : act(x.id)}</tr>`).join('');
     };
     const load = async () => { items = await cfg.load(); draw(); };
     const edit = async x => {
@@ -391,17 +391,24 @@
   const dt = d => (d ? new Date(d).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—');
   const tel = t => (t ? `<a href="tel:${esc(t)}">${esc(t)}</a>` : '—');
   const tgLink = x => (x.username ? `<div class="muted" style="font-size:13px"><a href="https://t.me/${esc(x.username)}" target="_blank" rel="noopener">@${esc(x.username)}</a></div>` : '');
+  // Telefon: +998901234567 → +998 90 123 45 67 (boshqa formatdagi raqam o'zgarmaydi)
+  const fmtPhone = t => { const m = /^\+?998(\d{2})(\d{3})(\d{2})(\d{2})$/.exec(String(t || '').replace(/[\s()\-.]/g, '')); return m ? `+998 ${m[1]} ${m[2]} ${m[3]} ${m[4]}` : String(t || ''); };
+  // Aloqa: telefon (tel: havola) va Telegram (@username → t.me) alohida bosiladigan tugmalar
+  const contact = x => `<div class="ct">${x.telefon ? `<a class="ct-l tel" href="tel:${esc(x.telefon)}"><i aria-hidden="true">📞</i>${esc(fmtPhone(x.telefon))}</a>` : ''}`
+    + (x.username ? `<a class="ct-l tg" href="https://t.me/${esc(x.username)}" target="_blank" rel="noopener"><i aria-hidden="true">✈️</i>@${esc(x.username)}</a>`
+      : x.telegram_id ? '<span class="muted ct-n">Telegram: username yo\'q</span>' : '') + '</div>';
   const LID = { yangi: ['Yangi', 'warn'], aloqada: ['Aloqada', ''], yozildi: ['Yozildi', 'ok'], rad: ['Rad etildi', 'off'] };
   const small = t => `<div class="muted" style="font-size:13px">${t}</div>`;
 
   S.lidlar = () => crud({
-    title: 'Lidlar', path: '/lidlar', addTitle: "Yangi lid (qo'lda)", editTitle: 'Lidni tahrirlash', delText: "Lidni o'chirasizmi?",
+    title: 'Lidlar', path: '/lidlar', addTitle: "Yangi lid (qo'lda)", editTitle: 'Lidni tahrirlash', delText: "Lidni o'chirasizmi?", cls: 'nz lid',
     load: async () => (await IC.api('GET', '/lidlar')).items,
     cols: [['Sana', x => dt(x.yaratilgan)],
-      ['FI', x => `<b>${esc(x.ism)}</b>${small(tel(x.telefon))}${tgLink(x)}`],
+      ['FI', x => `<b>${esc(x.ism)}</b>`, 'fi'],
+      ['Telefon / Telegram', contact, 'ct-td'],
       ['Manzil', x => esc(x.manzil) || '—'],
-      ['Fan / guruh', x => `<b>${esc(x.fan_nomi)}</b>${small(esc(x.guruh_nomi) + (x.guruh_id ? '' : ' (guruh o\'chirilgan)'))}${x.jadval ? small(esc(x.jadval)) : ''}`
-        + (x.guruh_id ? small(`${esc(x.oqituvchi_nomi) || ''}${x.oylik_narx ? ' · ' + esc(IC.money(x.oylik_narx)) : ''}`) : '')],
+      ['Fan / guruh', x => `<div class="fg"><b>${esc(x.fan_nomi)}</b>${small(esc(x.guruh_nomi) + (x.guruh_id ? '' : ' (guruh o\'chirilgan)'))}${x.jadval ? small(esc(x.jadval)) : ''}`
+        + (x.guruh_id ? small(`${esc(x.oqituvchi_nomi) || ''}${x.oylik_narx ? ' · ' + esc(IC.money(x.oylik_narx)) : ''}`) : '') + '</div>', 'fg-td'],
       ['Holat', x => `<span class="badge ${LID[x.holat][1]}">${LID[x.holat][0]}</span>`],
       ['Izoh', x => esc(x.izoh).slice(0, 80) || '—']],
     actions: x => `<td class="act">${x.oquvchi_id ? '' : `<button class="btn sm pri" data-o="${x.id}">O'quvchiga aylantirish</button> `}<button class="btn sm" data-e="${x.id}">Tahrirlash</button> <button class="btn sm dng" data-d="${x.id}">O'chirish</button></td>`,
@@ -448,13 +455,14 @@
   // ═══ NOMZODLAR: vakansiyaga botdan kelgan arizalar ═════════════════════════
   const NZ = { yangi: ['Yangi', 'warn'], korildi: ["Ko'rildi", ''], suhbat: ['Suhbat', ''], qabul: ['Qabul qilindi', 'ok'], rad: ['Rad etildi', 'off'] };
   S.nomzodlar = () => crud({
-    title: 'Nomzodlar', path: '/nomzodlar', noAdd: true, editTitle: 'Nomzodni tahrirlash', delText: "Nomzodni o'chirasizmi?",
+    title: 'Nomzodlar', path: '/nomzodlar', noAdd: true, editTitle: 'Nomzodni tahrirlash', delText: "Nomzodni o'chirasizmi?", cls: 'nz',
     load: async () => (await IC.api('GET', '/nomzodlar')).items,
     cols: [['Sana', x => dt(x.yaratilgan)],
-      ['Ism', x => `<b>${esc(x.ism)}</b>${small(tel(x.telefon))}${tgLink(x)}`],
+      ['FI', x => `<b>${esc(x.ism)}</b>`, 'fi'],
+      ['Telefon / Telegram', contact, 'ct-td'],
       ['Vakansiya', x => esc(x.vakansiya_nomi) || '—'],
-      ['Tajriba', x => `<div style="white-space:pre-wrap;max-width:320px">${esc(x.tajriba).slice(0, 300) || '—'}</div>`],
-      ['Holat', x => `<span class="badge ${NZ[x.holat][1]}">${NZ[x.holat][0]}</span>${x.izoh ? small(esc(x.izoh).slice(0, 80)) : ''}`]],
+      ['Tajriba', x => `<div class="tj">${esc(x.tajriba).slice(0, 300) || '—'}</div>`, 'tj-td'],
+      ['Holat', x => `<div class="hs"><span class="badge ${NZ[x.holat][1]}">${NZ[x.holat][0]}</span>${x.izoh ? small(esc(x.izoh).slice(0, 80)) : ''}</div>`]],
     actions: x => `<td class="act">${x.rezyume_bor ? `<button class="btn sm" data-r="${x.id}">Rezyume</button> ` : ''}<button class="btn sm" data-e="${x.id}">Tahrirlash</button> <button class="btn sm dng" data-d="${x.id}">O'chirish</button></td>`,
     fields: async () => [{ k: 'holat', label: 'Holat', type: 'select', req: true, options: Object.entries(NZ).map(([v, [t]]) => ({ v, t })) },
       { k: 'izoh', label: 'Izoh', type: 'textarea', full: true }],

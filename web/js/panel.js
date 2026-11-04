@@ -66,11 +66,6 @@
   }
 
   const opts = (arr, t) => arr.map(o => ({ v: o.id, t: typeof t === 'function' ? t(o) : o[t] }));
-  const personFields = extra => () => [
-    { k: 'familiya', label: 'Familiya', req: true }, { k: 'ism', label: 'Ism', req: true },
-    { k: 'telefon', label: 'Telefon', type: 'tel' },
-    ...(extra ? [extra] : []), { k: 'faol', label: 'Faol', type: 'checkbox' }];
-
   // ═══ Bo'limlar ═══
   const S = {};
 
@@ -92,15 +87,27 @@
       { k: 'faol', label: 'Faol', type: 'checkbox' }],
   });
 
+  // To'lov turi (oyliklar hisobi shundan hisoblanadi): soatbay / oylik / foiz
+  const HAQ_NOM = { soatbay: 'Soatbay', oylik: 'Oylik', foiz: 'Foiz' };
+  const haqSub = x => (x.haq_turi === 'soatbay' ? `${IC.money(x.soat_stavka)} / soat` : x.haq_turi === 'oylik' ? IC.money(x.oylik_maosh) : x.haq_turi === 'foiz' ? `${x.foiz}%` : '');
+  const haqCell = x => (x.haq_turi ? `<b>${HAQ_NOM[x.haq_turi]}</b><div class="muted" style="font-size:13px">${esc(haqSub(x))}</div>` : '<span class="badge off">Belgilanmagan</span>');
   S.oqituvchilar = () => crud({
     title: "O'qituvchilar", path: '/oqituvchilar', addTitle: "Yangi o'qituvchi", editTitle: "O'qituvchini tahrirlash", defaults: { faol: true },
     load: async () => (await IC.api('GET', '/oqituvchilar')).items,
-    cols: [['FI', x => `<b>${esc(full(x))}</b>`], ['Fan', x => esc(x.fan_nomi) || '<span class="badge off">Fan tanlanmagan</span>'], ['Telefon', x => esc(x.telefon) || '—'], ['Holat', x => stat(x.faol)]],
+    cols: [['FI', x => `<b>${esc(full(x))}</b>`], ['Fan', x => esc(x.fan_nomi) || '<span class="badge off">Fan tanlanmagan</span>'], ['Telefon', x => esc(x.telefon) || '—'],
+      ["To'lov turi", haqCell], ['Holat', x => stat(x.faol)]],
     fields: async x => {
       const f = (await IC.api('GET', '/fanlar')).fanlar;
       // Faol fanlar; tahrirlanayotgan o'qituvchining joriy fani nofaol bo'lsa ham ro'yxatda qoladi
-      return personFields({ k: 'fan_id', label: 'Fan', type: 'select', req: true, placeholder: '— Fanni tanlang —',
-        options: opts(f.filter(a => a.faol || (x && a.id === x.fan_id)), 'nomi') })();
+      return [{ k: 'familiya', label: 'Familiya', req: true }, { k: 'ism', label: 'Ism', req: true }, { k: 'telefon', label: 'Telefon', type: 'tel' },
+        { k: 'fan_id', label: 'Fan', type: 'select', req: true, placeholder: '— Fanni tanlang —', options: opts(f.filter(a => a.faol || (x && a.id === x.fan_id)), 'nomi') },
+        { k: 'haq_turi', label: "To'lov turi", type: 'select', req: true, placeholder: '— Tanlang —', full: true,
+          options: [{ v: 'soatbay', t: 'Soatbay (dars soatiga qarab)' }, { v: 'oylik', t: "Oylik (qat'iy maosh)" }, { v: 'foiz', t: "Foiz (guruhlarga tushgan to'lovdan)" }],
+          hint: "Oyliklar hisoboti shu bo'yicha hisoblanadi." },
+        { k: 'soat_stavka', label: "Bir soat uchun haq (so'm)", type: 'number', inputmode: 'decimal', req: true, showIf: { k: 'haq_turi', v: 'soatbay' }, hint: '1 soat = 60 daqiqa. Dars davomiyligi guruhdan olinadi.' },
+        { k: 'oylik_maosh', label: "Oylik maosh (so'm)", type: 'number', inputmode: 'decimal', req: true, showIf: { k: 'haq_turi', v: 'oylik' } },
+        { k: 'foiz', label: 'Foiz (%)', type: 'number', inputmode: 'decimal', req: true, showIf: { k: 'haq_turi', v: 'foiz' }, hint: "O'quvchi soniga bog'liq emas: guruhlarga shu oyda tushgan to'lovdan hisoblanadi." },
+        { k: 'faol', label: 'Faol', type: 'checkbox' }];
     },
   });
 
@@ -223,7 +230,8 @@
           options: o.items.filter(t => t.faol || (x && t.id === x.oqituvchi_id)).map(t => ({ v: t.id, t: full(t), group: t.fan_id })) },
         { k: 'kunlar', label: 'Dars kunlari', type: 'days', full: true },
         { k: 'soat', label: 'Dars vaqti', type: 'select', options: SOATLAR.map(t => ({ v: t, t })) },
-        { k: 'davomiylik', label: 'Dars davomiyligi (daqiqa)', type: 'number', inputmode: 'numeric', hint: 'Ixtiyoriy, masalan 90. Botda va davomatda dars tugash vaqti ko\'rinadi.' },
+        { k: 'davomiylik', label: 'Dars davomiyligi (daqiqa)', type: 'number', inputmode: 'numeric', req: !x || x.holat !== 'yopilgan', quick: [45, 60, 90, 120],
+          hint: 'Daqiqalarda, masalan 90. Botda va davomatda dars tugash vaqti ko\'rinadi, soatbay oyliklar shundan hisoblanadi.' },
         { k: 'boshlanish', label: 'Boshlanish sanasi', type: 'date', hint: "Sana kelganda «Ochiq» guruh avtomatik «Boshlangan» bo'ladi." }, { k: 'max_oquvchi', label: "Maks. o'quvchi", type: 'number', req: true },
         { k: 'oylik_narx', label: "Oylik to'lov narxi (so'm)", type: 'number', req: true, inputmode: 'decimal' },
         { k: 'holat', label: 'Holat', type: 'select', req: true, options: [{ v: 'ochiq', t: 'Ochiq' }, { v: 'boshlangan', t: 'Boshlangan' }, { v: 'yopilgan', t: 'Yopilgan' }],
@@ -686,9 +694,66 @@
     await rsLoad();
   };
 
+  // ═══ OYLIKLAR: o'qituvchilar haqi (oy bo'yicha, jonli hisob) ═══
+  // Soatbay: davomat belgilangan kunlar × davomiylik/60 × stavka. Oylik: qat'iy. Foiz: guruhlarga shu oy tushgan to'lovdan.
+  const OYL = { oy: thisMonth(), seq: 0, open: new Set() };
+  const soatFmt = n => String(Math.round(n * 100) / 100).replace('.', ',');
+  const guruhDetail = x => {
+    if (!x.guruhlar.length) return '<div class="muted">Guruh biriktirilmagan</div>';
+    const oylik = x.haq_turi === 'oylik';
+    return `<table><thead><tr><th>Guruh</th><th>Davomiylik</th><th>Darslar</th><th>Soat</th><th>Tushgan to'lov</th><th>Summa</th></tr></thead><tbody>${x.guruhlar.map(g => `<tr>
+      <td><b>${esc(g.nomi)}</b><div class="muted" style="font-size:13px">${esc(g.fan_nomi)}</div></td>
+      <td>${g.davomiylik ? g.davomiylik + ' daq' : '<span class="badge warn">Kiritilmagan</span>'}</td><td>${g.darslar}</td><td>${soatFmt(g.soat)}</td>
+      <td>${IC.money(g.tushum)}</td><td>${oylik ? '—' : IC.money(g.summa)}</td></tr>`).join('')}</tbody></table>${oylik ? `<div class="muted" style="font-size:13px;margin-top:6px">Oylik maosh qat'iy, guruhlar bo'yicha taqsimlanmaydi.</div>` : ''}`;
+  };
+  S.oyliklar = async () => {
+    view.innerHTML = `<div class="head"><h2>Oyliklar</h2><div class="spacer"></div>
+      <div class="mnav"><button class="btn sm" id="pm" type="button" aria-label="Oldingi oy">‹</button><b id="ml"></b><button class="btn sm" id="nm" type="button" aria-label="Keyingi oy">›</button></div>
+      <button class="btn" id="xl" type="button">⬇ Excel</button></div>
+      <p class="muted" style="margin:-4px 0 14px">Soat = dars davomiyligi ÷ 60. Dars sifatida guruhda davomat belgilangan kunlar hisoblanadi. Foiz — guruhlarga shu oyda tushgan to'lovdan.</p>
+      <div id="body"><div class="empty">Yuklanmoqda…</div></div>`;
+    const $ = q => view.querySelector(q);
+    const draw = d => {
+      const body = $('#body'); if (!body) return;
+      const warn = d.items.filter(x => x.ogohlantirish.length).length;
+      const rows = d.items.map(x => {
+        const open = OYL.open.has(x.id);
+        return `<tr><td><b>${esc(full(x))}</b>${x.faol ? '' : ' <span class="badge off">Nofaol</span>'}<div class="muted" style="font-size:13px">${esc(x.fan_nomi)}</div>
+          ${x.ogohlantirish.map(w => `<div style="margin-top:4px"><span class="badge warn">${esc(w)}</span></div>`).join('')}</td>
+          <td>${haqCell(x)}</td><td>${x.darslar}</td><td>${soatFmt(x.soat)}</td><td>${IC.money(x.tushum)}</td>
+          <td><b>${x.haq_turi ? IC.money(x.summa) : '—'}</b></td>
+          <td class="act"><button class="btn sm" data-o="${x.id}" type="button">${open ? 'Yopish' : 'Guruhlar'}</button></td></tr>` +
+          (open ? `<tr><td colspan="7">${guruhDetail(x)}</td></tr>` : '');
+      }).join('');
+      body.innerHTML = `<div class="stats" style="margin-bottom:14px">
+        <div class="card stat"><b>${esc(IC.money(d.jami))}</b><span>Jami hisoblangan</span></div>
+        <div class="card stat"><b>${d.items.length}</b><span>O'qituvchilar</span></div>
+        <div class="card stat"><b>${warn}</b><span>E'tibor talab qiladi</span></div></div>
+        ${d.items.length ? `<div class="card tw"><table><thead><tr><th>O'qituvchi</th><th>To'lov turi</th><th>Darslar</th><th>Soat</th><th>Tushgan to'lov</th><th>Hisoblangan</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+          : '<div class="card"><div class="empty">Bu oy uchun ma\'lumot yo\'q</div></div>'}`;
+      body.onclick = e => {
+        const b = e.target.closest('[data-o]'); if (!b) return;
+        const id = Number(b.dataset.o); OYL.open.has(id) ? OYL.open.delete(id) : OYL.open.add(id); draw(d);
+      };
+    };
+    const reload = async () => {
+      const my = ++OYL.seq; $('#ml').textContent = oyNomi(OYL.oy); $('#body').innerHTML = '<div class="empty">Yuklanmoqda…</div>';
+      try { const d = await IC.api('GET', '/oqituvchi-hisobot?oy=' + OYL.oy); if (my === OYL.seq) draw(d); }
+      catch (x) { if (my === OYL.seq && $('#body')) { $('#body').innerHTML = ''; IC.toast(x.message, true); } }
+    };
+    $('#pm').onclick = () => { OYL.oy = moveMonth(OYL.oy, -1); reload(); };
+    $('#nm').onclick = () => { if (OYL.oy >= thisMonth()) return; OYL.oy = moveMonth(OYL.oy, 1); reload(); };
+    $('#xl').onclick = async e => {
+      const b = e.currentTarget; b.disabled = true;
+      try { await IC.download('/oqituvchi-hisobot/excel?oy=' + OYL.oy, `oyliklar-${OYL.oy}.xlsx`); } catch (x) { IC.toast(x.message, true); }
+      b.disabled = false;
+    };
+    await reload();
+  };
+
   // ── Navigatsiya ──
   const TABS = [['dash', '🏠 Bosh sahifa'], ['lidlar', '📥 Lidlar'], ['fanlar', '📚 Fanlar'], ['guruhlar', '👥 Guruhlar'], ['oquvchilar', "🎓 O'quvchilar"], ['oqituvchilar', "🧑‍🏫 O'qituvchilar"],
-    ['tolovlar', "💳 To'lovlar"], ['vakansiyalar', '💼 Vakansiyalar'], ['nomzodlar', '📨 Nomzodlar']];
+    ['tolovlar', "💳 To'lovlar"], ['oyliklar', '💰 Oyliklar'], ['vakansiyalar', '💼 Vakansiyalar'], ['nomzodlar', '📨 Nomzodlar']];
   const nav = document.getElementById('tabs');
   nav.innerHTML = TABS.map(([k, t]) => `<button class="tab" data-k="${k}" type="button">${t}</button>`).join('');
   // Yangi (ko'rilmagan) lid va nomzodlar soni — menyuda ko'rinadi

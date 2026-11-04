@@ -274,3 +274,11 @@ BEGIN
     ALTER TABLE davomat ADD CONSTRAINT davomat_holat_check CHECK (holat IN ('keldi','kechikdi','kelmadi','sababli'));
   END IF;
 END $$;
+
+-- ── O'qituvchi haqi (oyliklar hisoboti) ──────────────────────────────────────
+-- haq_turi: soatbay (soat_stavka × o'tilgan soat), oylik (qat'iy oylik_maosh), foiz (guruhlarga tushgan to'lovdan foiz).
+-- Eski o'qituvchilarda NULL — «belgilanmagan»; keyingi tahrirda majburiy belgilanadi.
+ALTER TABLE oqituvchilar ADD COLUMN IF NOT EXISTS haq_turi TEXT CHECK (haq_turi IN ('soatbay','oylik','foiz'));
+ALTER TABLE oqituvchilar ADD COLUMN IF NOT EXISTS soat_stavka NUMERIC(14,2) CHECK (soat_stavka IS NULL OR soat_stavka >= 0);
+ALTER TABLE oqituvchilar ADD COLUMN IF NOT EXISTS oylik_maosh NUMERIC(14,2) CHECK (oylik_maosh IS NULL OR oylik_maosh >= 0);
+ALTER TABLE oqituvchilar ADD COLUMN IF NOT EXISTS foiz NUMERIC(5,2) CHECK (foiz IS NULL OR (foiz >= 0 AND foiz <= 100));

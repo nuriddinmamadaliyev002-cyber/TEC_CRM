@@ -68,6 +68,8 @@ input[type=checkbox]{width:auto}
 .fld{margin-bottom:12px}
 .fld.chk label{display:flex;gap:8px;align-items:center;font-weight:500}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+.quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.quick .btn{min-width:44px;justify-content:center}
 /* Dars kunlari: Du…Yak tugmalari (yashirin checkbox + belgilanganda to'ldiriladi) */
 .days{display:flex;flex-wrap:wrap;gap:6px}
 .day{position:relative;margin:0}

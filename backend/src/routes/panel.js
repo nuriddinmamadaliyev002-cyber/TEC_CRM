@@ -53,56 +53,66 @@ router.delete('/fanlar/:id', wrap(async (req, res) => {
   }
 }));
 
-// ═══ O'QITUVCHILAR / O'QUVCHILAR (bir xil shakl) ═════════════════════════════
-function person(table, withFan) {
-  const r = Router();
-  r.get('/', wrap(async (req, res) => {
-    const q = withFan
-      ? await pool.query(`SELECT t.*, f.nomi AS fan_nomi FROM oqituvchilar t LEFT JOIN fanlar f ON f.id=t.fan_id WHERE t.filial_id=$1 ORDER BY t.id DESC`, [req.filialId])
-      : await pool.query(`SELECT * FROM ${table} WHERE filial_id=$1 ORDER BY id DESC`, [req.filialId]);
-    res.json({ ok: true, items: q.rows });
-  }));
-  const body = b => {
-    const ism = str(b.ism, 100); if (!ism) return { err: 'Ism majburiy' };
-    const fan = withFan ? int(b.fan_id) : null;
-    if (withFan && !fan) return { err: 'Fanni tanlang' }; // fansiz o'qituvchini guruhga biriktirib bo'lmaydi
-    return { v: [ism, str(b.familiya, 100), str(b.telefon, 30), b.faol !== false, ...(withFan ? [fan] : [])] };
-  };
-  // O'quvchi nofaol bo'lgan sanani yuritamiz: shu oydan boshlab to'lovlar reestrida ko'rinmaydi (oldingi oylarda ko'rinadi)
-  const syncNofaol = id => withFan ? null : pool.query(
-    `UPDATE oquvchilar SET nofaol_sana = CASE WHEN faol THEN NULL ELSE COALESCE(nofaol_sana, (NOW() AT TIME ZONE 'Asia/Tashkent')::date) END WHERE id=$1`, [id]);
-  r.post('/', wrap(async (req, res) => {
-    const { err, v } = body(req.body); if (err) return bad(res, err);
-    if (withFan && !(await inFilial('fanlar', v[4], req.filialId))) return bad(res, 'Fan topilmadi');
-    const cols = 'ism,familiya,telefon,faol' + (withFan ? ',fan_id' : '') + ',filial_id';
-    const vals = [...v, req.filialId], ph = vals.map((_, i) => '$' + (i + 1)).join(',');
-    try {
-      const q = await pool.query(`INSERT INTO ${table}(${cols}) VALUES(${ph}) RETURNING id`, vals);
-      await syncNofaol(q.rows[0].id);
-      res.json({ ok: true, id: q.rows[0].id });
-    } catch (e) { if (e.code === '23503') return bad(res, 'Fan topilmadi'); throw e; }
-  }));
-  r.put('/:id', wrap(async (req, res) => {
-    const { err, v } = body(req.body); if (err) return bad(res, err);
-    const id = int(req.params.id) || 0;
-    if (withFan && !(await inFilial('fanlar', v[4], req.filialId))) return bad(res, 'Fan topilmadi');
-    // Fan o'zgarsa, o'qituvchi boshqa fan guruhlarida qolib ketmasin
-    if (withFan && (await pool.query('SELECT 1 FROM guruhlar WHERE oqituvchi_id=$1 AND fan_id<>$2 LIMIT 1', [id, v[4]])).rowCount)
-      return bad(res, "Bu o'qituvchi boshqa fan guruhlarida dars beradi. Avval o'sha guruhlarni o'zgartiring", 409);
-    const sets = 'ism=$1,familiya=$2,telefon=$3,faol=$4' + (withFan ? ',fan_id=$5' : '');
-    try {
-      const q = await pool.query(`UPDATE ${table} SET ${sets} WHERE id=$${v.length + 1} AND filial_id=$${v.length + 2}`, [...v, id, req.filialId]);
-      if (q.rowCount) await syncNofaol(id);
-      q.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
-    } catch (e) { if (e.code === '23503') return bad(res, 'Fan topilmadi'); throw e; }
-  }));
-  r.delete('/:id', wrap(async (req, res) => {
-    const q = await pool.query(`DELETE FROM ${table} WHERE id=$1 AND filial_id=$2`, [int(req.params.id) || 0, req.filialId]);
-    q.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
-  }));
-  return r;
+// ═══ O'QITUVCHILAR ══════════════════════════════════════════════════════════
+// Har o'qituvchida haq turi belgilanadi: soatbay | oylik | foiz (oyliklar hisoboti shundan hisoblaydi).
+const HAQ_TURLARI = ['soatbay', 'oylik', 'foiz'];
+const MAX_SUMMA = 999999999999;
+function oqituvchiBody(b) {
+  const ism = str(b.ism, 100); if (!ism) return { err: 'Ism majburiy' };
+  const fan = int(b.fan_id); if (!fan) return { err: 'Fanni tanlang' }; // fansiz o'qituvchini guruhga biriktirib bo'lmaydi
+  const turi = HAQ_TURLARI.includes(b.haq_turi) ? b.haq_turi : null;
+  if (!turi) return { err: "To'lov turini tanlang (soatbay, oylik yoki foiz)" };
+  let stavka = null, oylik = null, foiz = null; // faqat tanlangan turga tegishli qiymat saqlanadi
+  if (turi === 'soatbay') {
+    stavka = num(b.soat_stavka);
+    if (stavka == null || stavka <= 0 || stavka > MAX_SUMMA) return { err: "Bir soat uchun haqni to'g'ri kiriting" };
+  } else if (turi === 'oylik') {
+    oylik = num(b.oylik_maosh);
+    if (oylik == null || oylik <= 0 || oylik > MAX_SUMMA) return { err: "Oylik maoshni to'g'ri kiriting" };
+  } else {
+    foiz = num(b.foiz);
+    if (foiz == null || foiz <= 0 || foiz > 100) return { err: "Foiz 0 dan katta va 100 dan oshmaydigan bo'lsin" };
+  }
+  // v: 0 ism, 1 familiya, 2 telefon, 3 faol, 4 fan, 5 haq turi, 6 soat stavkasi, 7 oylik, 8 foiz
+  return { v: [ism, str(b.familiya, 100), str(b.telefon, 30), b.faol !== false, fan, turi, stavka, oylik, foiz] };
 }
-router.use('/oqituvchilar', person('oqituvchilar', true));
+const oqituvchilar = Router();
+oqituvchilar.get('/', wrap(async (req, res) => {
+  const q = await pool.query(
+    `SELECT t.id, t.ism, t.familiya, t.telefon, t.faol, t.fan_id, t.haq_turi, t.soat_stavka::float AS soat_stavka,
+            t.oylik_maosh::float AS oylik_maosh, t.foiz::float AS foiz, f.nomi AS fan_nomi
+       FROM oqituvchilar t LEFT JOIN fanlar f ON f.id=t.fan_id WHERE t.filial_id=$1 ORDER BY t.id DESC`, [req.filialId]);
+  res.json({ ok: true, items: q.rows });
+}));
+oqituvchilar.post('/', wrap(async (req, res) => {
+  const { err, v } = oqituvchiBody(req.body); if (err) return bad(res, err);
+  if (!(await inFilial('fanlar', v[4], req.filialId))) return bad(res, 'Fan topilmadi');
+  try {
+    const q = await pool.query(
+      `INSERT INTO oqituvchilar(ism,familiya,telefon,faol,fan_id,haq_turi,soat_stavka,oylik_maosh,foiz,filial_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+      [...v, req.filialId]);
+    res.json({ ok: true, id: q.rows[0].id });
+  } catch (e) { if (e.code === '23503') return bad(res, 'Fan topilmadi'); throw e; }
+}));
+oqituvchilar.put('/:id', wrap(async (req, res) => {
+  const { err, v } = oqituvchiBody(req.body); if (err) return bad(res, err);
+  const id = int(req.params.id) || 0;
+  if (!(await inFilial('fanlar', v[4], req.filialId))) return bad(res, 'Fan topilmadi');
+  // Fan o'zgarsa, o'qituvchi boshqa fan guruhlarida qolib ketmasin
+  if ((await pool.query('SELECT 1 FROM guruhlar WHERE oqituvchi_id=$1 AND fan_id<>$2 LIMIT 1', [id, v[4]])).rowCount)
+    return bad(res, "Bu o'qituvchi boshqa fan guruhlarida dars beradi. Avval o'sha guruhlarni o'zgartiring", 409);
+  try {
+    const q = await pool.query(
+      `UPDATE oqituvchilar SET ism=$1,familiya=$2,telefon=$3,faol=$4,fan_id=$5,haq_turi=$6,soat_stavka=$7,oylik_maosh=$8,foiz=$9 WHERE id=$10 AND filial_id=$11`,
+      [...v, id, req.filialId]);
+    q.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+  } catch (e) { if (e.code === '23503') return bad(res, 'Fan topilmadi'); throw e; }
+}));
+oqituvchilar.delete('/:id', wrap(async (req, res) => {
+  const q = await pool.query('DELETE FROM oqituvchilar WHERE id=$1 AND filial_id=$2', [int(req.params.id) || 0, req.filialId]);
+  q.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+}));
+router.use('/oqituvchilar', oqituvchilar);
 
 // ═══ O'QUVCHILAR: faol / nofaol ══════════════════════════════════════════════
 // Ro'yxat har bir o'quvchi uchun guruh(lar)i, o'qituvchisi va guruhga qo'shilgan (o'qishni boshlagan) sanasini ham qaytaradi.
@@ -221,11 +231,12 @@ function guruhBody(b) {
   if (b.boshlanish && !date(b.boshlanish)) return { err: "Boshlanish sanasi noto'g'ri" };
   // Boshlanish sanasi kelgan «Ochiq» guruh darhol «Boshlangan» bo'ladi (fon vazifasi ham shuni qiladi — holat o'zgarib ketmasin)
   if (holat === 'ochiq' && date(b.boshlanish) && date(b.boshlanish) <= todayISO()) holat = 'boshlangan';
+  // Davomiylik majburiy (soatbay oyliklar shundan hisoblanadi); eski yopilgan guruhlarni tahrirlash uchun faqat ular istisno
   let dav = null;
   if (b.davomiylik !== '' && b.davomiylik != null) {
     dav = int(b.davomiylik);
     if (!dav || dav < 15 || dav > 480) return { err: "Dars davomiyligi 15–480 daqiqa bo'lsin" };
-  }
+  } else if (holat !== 'yopilgan') return { err: 'Dars davomiyligini daqiqalarda kiriting (masalan 90)' };
   const kunlar = [...new Set((Array.isArray(b.kunlar) ? b.kunlar : []).map(Number))].sort((x, y) => x - y);
   if (kunlar.some(k => !Number.isInteger(k) || k < 1 || k > 7)) return { err: "Dars kunlari noto'g'ri" };
   const soat = str(b.soat, 5);
@@ -683,6 +694,113 @@ router.get('/tolov-reestr/excel', wrap(async (req, res) => {
   const fname = `tolovlar-${oy}.xlsx`;
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${fname}"`);
+  res.setHeader('X-Oy-Nomi', encodeURIComponent(`${OY[Number(oy.slice(5)) - 1]} ${oy.slice(0, 4)}`));
+  await wb.xlsx.write(res);
+  res.end();
+}));
+
+// ═══ O'QITUVCHILAR OYLIGI ═══════════════════════════════════════════════════
+// Hisob jonli, oy bo'yicha:
+//  • soatbay — guruhda shu oy davomat belgilangan kunlar soni × dars davomiyligi / 60 (1 soat = 60 daqiqa) × soat stavkasi;
+//  • oylik   — qat'iy oylik maosh;
+//  • foiz    — guruhlarga shu oyda haqiqatda tushgan to'lovlar yig'indisidan foiz (o'quvchi soniga bog'liq emas).
+// Guruhning HOZIRGI o'qituvchisi hisobga olinadi (o'qituvchi almashtirilsa, eski oylar ham yangisiga o'tadi — oyni muzlatish keyingi bosqich).
+async function oqituvchiHisobot(oy, filialId) {
+  const bosh = oy + '-01';
+  const [t, g] = await Promise.all([
+    pool.query(`SELECT t.id, t.ism, t.familiya, t.faol, t.haq_turi, t.soat_stavka::float AS soat_stavka, t.oylik_maosh::float AS oylik_maosh,
+                       t.foiz::float AS foiz, f.nomi AS fan_nomi
+                  FROM oqituvchilar t LEFT JOIN fanlar f ON f.id=t.fan_id WHERE t.filial_id=$1 ORDER BY t.familiya, t.ism`, [filialId]),
+    pool.query(`SELECT g.id, g.nomi, g.oqituvchi_id, g.davomiylik, f.nomi AS fan_nomi,
+                       COALESCE(d.darslar, 0)::int AS darslar, COALESCE(p.summa, 0)::float AS tushum
+                  FROM guruhlar g
+                  JOIN fanlar f ON f.id = g.fan_id
+                  LEFT JOIN LATERAL (SELECT COUNT(DISTINCT sana) AS darslar FROM davomat
+                                      WHERE guruh_id = g.id AND sana >= $1::date AND sana < $1::date + interval '1 month') d ON TRUE
+                  LEFT JOIN LATERAL (SELECT SUM(summa) AS summa FROM tolovlar
+                                      WHERE guruh_id = g.id AND sana >= $1::date AND sana < $1::date + interval '1 month') p ON TRUE
+                 WHERE g.filial_id = $2 AND g.oqituvchi_id IS NOT NULL
+                   AND (COALESCE(d.darslar, 0) > 0 OR COALESCE(p.summa, 0) > 0
+                        OR (g.holat <> 'yopilgan' AND (g.boshlanish IS NULL OR g.boshlanish < $1::date + interval '1 month')))
+                 ORDER BY g.nomi`, [bosh, filialId]),
+  ]);
+  const byT = new Map();
+  for (const x of g.rows) { if (!byT.has(x.oqituvchi_id)) byT.set(x.oqituvchi_id, []); byT.get(x.oqituvchi_id).push(x); }
+  const round2 = n => Math.round(n * 100) / 100;
+  const items = [];
+  for (const o of t.rows) {
+    const guruhlar = (byT.get(o.id) || []).map(x => {
+      const soat = x.davomiylik ? round2(x.darslar * x.davomiylik / 60) : 0;
+      let summa = 0;
+      if (o.haq_turi === 'soatbay') summa = Math.round(soat * o.soat_stavka);
+      else if (o.haq_turi === 'foiz') summa = Math.round(x.tushum * o.foiz / 100);
+      return { id: x.id, nomi: x.nomi, fan_nomi: x.fan_nomi, davomiylik: x.davomiylik, darslar: x.darslar, soat, tushum: x.tushum, summa };
+    });
+    const faolmi = guruhlar.some(x => x.darslar > 0 || x.tushum > 0);
+    if (!o.faol && !faolmi) continue; // nofaol va shu oyda ishi bo'lmagan o'qituvchi ko'rinmaydi
+    const ogoh = [];
+    if (!o.haq_turi) ogoh.push("To'lov turi belgilanmagan — o'qituvchini tahrirlab belgilang");
+    if (o.haq_turi === 'soatbay' && guruhlar.some(x => x.darslar > 0 && !x.davomiylik)) ogoh.push("Ba'zi guruhlarda dars davomiyligi kiritilmagan — soat hisoblanmadi");
+    const jamiGuruh = guruhlar.reduce((a, x) => a + x.summa, 0);
+    items.push({
+      id: o.id, ism: o.ism, familiya: o.familiya, faol: o.faol, fan_nomi: o.fan_nomi,
+      haq_turi: o.haq_turi, soat_stavka: o.soat_stavka, oylik_maosh: o.oylik_maosh, foiz: o.foiz,
+      darslar: guruhlar.reduce((a, x) => a + x.darslar, 0), soat: round2(guruhlar.reduce((a, x) => a + x.soat, 0)),
+      tushum: guruhlar.reduce((a, x) => a + x.tushum, 0),
+      summa: o.haq_turi === 'oylik' ? Math.round(o.oylik_maosh) : jamiGuruh,
+      ogohlantirish: ogoh, guruhlar,
+    });
+  }
+  return { oy, items, jami: items.reduce((a, x) => a + x.summa, 0) };
+}
+router.get('/oqituvchi-hisobot', wrap(async (req, res) => {
+  if (!oyOk(req.query.oy)) return bad(res, "Oy noto'g'ri (kelajak oyini ko'rib bo'lmaydi)");
+  res.json({ ok: true, ...(await oqituvchiHisobot(req.query.oy, req.filialId)) });
+}));
+router.get('/oqituvchi-hisobot/excel', wrap(async (req, res) => {
+  const oy = String(req.query.oy || '');
+  if (!oyOk(oy)) return bad(res, "Oy noto'g'ri (kelajak oyini ko'rib bo'lmaydi)");
+  const h = await oqituvchiHisobot(oy, req.filialId);
+  const ExcelJS = require('exceljs');
+  const wb = new ExcelJS.Workbook();
+  const OY = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
+  const TUR = { soatbay: 'Soatbay', oylik: 'Oylik', foiz: 'Foiz' };
+  const stavka = x => (x.haq_turi === 'soatbay' ? x.soat_stavka : x.haq_turi === 'oylik' ? x.oylik_maosh : x.haq_turi === 'foiz' ? x.foiz / 100 : null);
+  const nomi = x => `${x.familiya} ${x.ism}`.trim() + (x.faol ? '' : ' (nofaol)');
+  const style = ws => {
+    const head = ws.getRow(1);
+    head.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    head.alignment = { vertical: 'middle', wrapText: true };
+    head.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F6F54' } }; });
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+  };
+  const ws = wb.addWorksheet('Oyliklar');
+  ws.columns = [
+    { header: '№', key: 'n', width: 5 }, { header: "O'qituvchi", key: 'oq', width: 28 }, { header: 'Fan', key: 'fan', width: 20 },
+    { header: "To'lov turi", key: 'tur', width: 12 }, { header: 'Stavka', key: 'st', width: 16 }, { header: 'Darslar soni', key: 'dr', width: 12 },
+    { header: 'Soat', key: 'soat', width: 10 }, { header: "Guruhlarga tushgan to'lov", key: 'tush', width: 22 }, { header: 'Hisoblangan summa', key: 'sum', width: 20 },
+    { header: 'Eslatma', key: 'og', width: 44 },
+  ];
+  h.items.forEach((x, i) => {
+    const r = ws.addRow({ n: i + 1, oq: nomi(x), fan: x.fan_nomi, tur: TUR[x.haq_turi] || 'Belgilanmagan', st: stavka(x), dr: x.darslar, soat: x.soat, tush: x.tushum, sum: x.summa, og: x.ogohlantirish.join('; ') });
+    if (x.haq_turi === 'foiz') r.getCell('st').numFmt = '0.##%';
+    else r.getCell('st').numFmt = '#,##0';
+  });
+  ws.addRow({ oq: 'JAMI', tush: h.items.reduce((a, x) => a + x.tushum, 0), sum: h.jami }).font = { bold: true };
+  ['tush', 'sum'].forEach(k => { ws.getColumn(k).numFmt = '#,##0'; });
+  style(ws);
+  const w2 = wb.addWorksheet('Guruhlar bo\'yicha');
+  w2.columns = [
+    { header: "O'qituvchi", key: 'oq', width: 28 }, { header: 'Guruh', key: 'g', width: 24 }, { header: 'Fan', key: 'fan', width: 20 },
+    { header: 'Davomiylik (daq)', key: 'dav', width: 16 }, { header: 'Darslar soni', key: 'dr', width: 12 }, { header: 'Soat', key: 'soat', width: 10 },
+    { header: "Tushgan to'lov", key: 'tush', width: 18 }, { header: 'Summa', key: 'sum', width: 16 },
+  ];
+  for (const x of h.items) for (const gr of x.guruhlar)
+    w2.addRow({ oq: nomi(x), g: gr.nomi, fan: gr.fan_nomi, dav: gr.davomiylik, dr: gr.darslar, soat: gr.soat, tush: gr.tushum, sum: x.haq_turi === 'oylik' ? null : gr.summa });
+  ['tush', 'sum'].forEach(k => { w2.getColumn(k).numFmt = '#,##0'; });
+  style(w2);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="oyliklar-${oy}.xlsx"`);
   res.setHeader('X-Oy-Nomi', encodeURIComponent(`${OY[Number(oy.slice(5)) - 1]} ${oy.slice(0, 4)}`));
   await wb.xlsx.write(res);
   res.end();

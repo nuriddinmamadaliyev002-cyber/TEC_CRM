@@ -68,7 +68,7 @@
   }
 
   // Forma maydonlari: {k, label, type: text|number|tel|date|select|textarea|checkbox|days, req, options:[{v,t}], full,
-  //   autocomplete (input), placeholder (select: birinchi bo'sh variant matni), dependsOn (select: boshqa select maydoni kaliti; options[].group shu qiymatga teng bo'lganlari ko'rinadi)}
+  //   autocomplete (input), quick (number: tez tanlash qiymatlari), showIf ({k, v}: maydon faqat boshqa maydon qiymati v bo'lganda ko'rinadi va majburiy tekshiriladi), placeholder (select: birinchi bo'sh variant matni), dependsOn (select: boshqa select maydoni kaliti; options[].group shu qiymatga teng bo'lganlari ko'rinadi)}
   const DAYS = [['Du', 'Dushanba'], ['Se', 'Seshanba'], ['Chor', 'Chorshanba'], ['Pay', 'Payshanba'], ['Ju', 'Juma'], ['Sha', 'Shanba'], ['Yak', 'Yakshanba']];
   function fieldHTML(f, val) {
     const id = 'f_' + f.k, v = val == null ? '' : val, req = f.req ? ' required' : '';
@@ -88,6 +88,8 @@
     } else {
       const ex = f.type === 'number' ? ' min="0" step="any"' : '';
       inp = `<input id="${id}" type="${f.type || 'text'}" value="${esc(v)}"${req}${ex}${f.inputmode ? ` inputmode="${f.inputmode}"` : ''}${f.autocomplete ? ` autocomplete="${f.autocomplete}"` : ''}>`;
+      // quick: [45, 60, 90] — bosilsa qiymat maydonga yoziladi (tez tanlash tugmalari)
+      if (f.quick) inp += `<div class="quick">${f.quick.map(n => `<button type="button" class="btn sm" data-q="${n}" data-for="${id}">${n}</button>`).join('')}</div>`;
     }
     return `<div class="fld"><label for="${id}">${esc(f.label)}${f.req ? ' *' : ''}</label>${inp}${f.hint ? `<div class="muted" style="font-size:12.5px;margin-top:4px">${esc(f.hint)}</div>` : ''}</div>`;
   }
@@ -126,11 +128,23 @@
       };
       dep.addEventListener('change', apply); apply();
     });
+    // showIf: maydon boshqa maydon (masalan, «To'lov turi») qiymatiga qarab ko'rinadi/yashiriladi
+    fields.filter(f => f.showIf).forEach(f => {
+      const ctl = form.querySelector('#f_' + f.showIf.k), box = form.querySelector('#f_' + f.k)?.closest('.fld');
+      if (!ctl || !box) return;
+      const apply = () => box.classList.toggle('hidden', ctl.value !== f.showIf.v);
+      ctl.addEventListener('change', apply); apply();
+    });
+    form.addEventListener('click', e => { // quick tugmalar
+      const b = e.target.closest('[data-q]'); if (!b) return;
+      const el = form.querySelector('#' + b.dataset.for); if (el) { el.value = b.dataset.q; el.focus(); }
+    });
     const first = form.querySelector('input,select,textarea'); if (first) first.focus();
     form.onsubmit = async e => {
       e.preventDefault(); err.textContent = '';
       for (const f of fields) {
         const el = form.querySelector('#f_' + f.k);
+        if (el.closest('.fld').classList.contains('hidden')) continue; // yashirin (showIf) maydon tekshirilmaydi
         if (f.req && f.type !== 'checkbox' && f.type !== 'days' && !el.value.trim()) { err.textContent = `«${f.label}» majburiy`; el.focus(); return; }
       }
       const btn = form.querySelector('.pri'); btn.disabled = true;

@@ -81,36 +81,36 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
   r = await call('GET', '/fanlar', null, KA); t('fan ro\'yxatida narx/davomiylik yo\'q', r.d.fanlar && r.d.fanlar[0].nomi && !('narx' in r.d.fanlar[0]) && !('davomiylik_oy' in r.d.fanlar[0]), r);
   r = await call('GET', '/kurslar', null, KA); t('eski /kurslar yo\'li yo\'q → 404', r.s === 404, r);
   const FID2 = (await call('POST', '/fanlar', { nomi: 'Matematika' }, KA)).d.id; // boshqa fan (fan↔o'qituvchi tekshiruvlari uchun)
-  r = await call('POST', '/oqituvchilar', { ism: 'Fansiz' }, KA); t('fansiz o\'qituvchi → 400', r.s === 400, r);
-  r = await call('POST', '/oqituvchilar', { ism: 'X', fan_id: 99999 }, KA); t('mavjud bo\'lmagan fan bilan o\'qituvchi → 400', r.s === 400, r);
-  r = await call('POST', '/oqituvchilar', { ism: 'Sardor', familiya: 'Karimov', fan_id: KID }, KA); t('o\'qituvchi yaratish (fan_id bilan)', r.s === 200, r);
+  r = await call('POST', '/oqituvchilar', { haq_turi: 'soatbay', soat_stavka: 50000, ism: 'Fansiz' }, KA); t('fansiz o\'qituvchi → 400', r.s === 400, r);
+  r = await call('POST', '/oqituvchilar', { haq_turi: 'soatbay', soat_stavka: 50000, ism: 'X', fan_id: 99999 }, KA); t('mavjud bo\'lmagan fan bilan o\'qituvchi → 400', r.s === 400, r);
+  r = await call('POST', '/oqituvchilar', { haq_turi: 'soatbay', soat_stavka: 50000, ism: 'Sardor', familiya: 'Karimov', fan_id: KID }, KA); t('o\'qituvchi yaratish (fan_id bilan)', r.s === 200, r);
   const TID = r.d.id;
   r = await call('GET', '/oqituvchilar', null, KA); t('o\'qituvchi ro\'yxatida fan_nomi bor', r.d.items.find(x => x.id === TID).fan_nomi === 'Python', r);
-  const TMAT = (await call('POST', '/oqituvchilar', { ism: 'Mat', familiya: 'Teacher', fan_id: FID2 }, KA)).d.id; // Matematika o'qituvchisi
+  const TMAT = (await call('POST', '/oqituvchilar', { haq_turi: 'soatbay', soat_stavka: 50000, ism: 'Mat', familiya: 'Teacher', fan_id: FID2 }, KA)).d.id; // Matematika o'qituvchisi
   // dars jadvali: kunlar + soat
-  r = await call('POST', '/guruhlar', { oylik_narx: 300000, nomi: 'PY-1', fan_id: KID, oqituvchi_id: TID, kunlar: [5, 1, 3, 3], soat: '19:00', boshlanish: '2026-11-01', max_oquvchi: 2 }, KA); t('guruh yaratish (kunlar+soat)', r.s === 200, r);
+  r = await call('POST', '/guruhlar', { davomiylik: 90, oylik_narx: 300000, nomi: 'PY-1', fan_id: KID, oqituvchi_id: TID, kunlar: [5, 1, 3, 3], soat: '19:00', boshlanish: '2026-11-01', max_oquvchi: 2 }, KA); t('guruh yaratish (kunlar+soat)', r.s === 200, r);
   const GID = r.d.id;
   r = await call('GET', '/guruhlar', null, KA); { const g = r.d.guruhlar.find(x => x.id === GID);
     t('jadval matni kunlar+soat\'dan hosil bo\'ladi (tartiblangan, takrorsiz)', g.jadval === 'Du-Chor-Ju 19:00' && JSON.stringify(g.kunlar) === '[1,3,5]' && g.soat === '19:00', g);
     t('guruhda fan_nomi va boshlanish YYYY-MM-DD', g.fan_nomi === 'Python' && g.boshlanish === '2026-11-01', g); }
-  r = await call('POST', '/guruhlar', { oylik_narx: 300000, nomi: 'Yak', fan_id: KID, kunlar: [7], soat: '08:30' }, KA); t('yakshanba (7) qabul qilinadi', r.s === 200, r);
+  r = await call('POST', '/guruhlar', { davomiylik: 90, oylik_narx: 300000, nomi: 'Yak', fan_id: KID, kunlar: [7], soat: '08:30' }, KA); t('yakshanba (7) qabul qilinadi', r.s === 200, r);
   { const yid = r.d.id; r = await call('GET', '/guruhlar', null, KA); t('yakshanba → «Yak 08:30»', r.d.guruhlar.find(x => x.id === yid).jadval === 'Yak 08:30', r); await call('DELETE', `/guruhlar/${yid}`, null, KA); }
-  r = await call('POST', '/guruhlar', { nomi: 'X', fan_id: KID, kunlar: [0], soat: '19:00' }, KA); t('kun 0 → 400', r.s === 400, r);
-  r = await call('POST', '/guruhlar', { nomi: 'X', fan_id: KID, kunlar: [8], soat: '19:00' }, KA); t('kun 8 → 400', r.s === 400, r);
-  r = await call('POST', '/guruhlar', { nomi: 'X', fan_id: KID, kunlar: [1], soat: '25:00' }, KA); t('noto\'g\'ri soat → 400', r.s === 400, r);
-  r = await call('POST', '/guruhlar', { nomi: 'X', fan_id: KID, kunlar: [1] }, KA); t('kunlar bor, soat yo\'q → 400', r.s === 400, r);
-  r = await call('POST', '/guruhlar', { nomi: 'X', fan_id: KID, soat: '19:00' }, KA); t('soat bor, kunlar yo\'q → 400', r.s === 400, r);
-  r = await call('POST', '/guruhlar', { oylik_narx: 300000, nomi: 'X', fan_id: KID }, KA); t('jadvalsiz guruh mumkin (jadval bo\'sh)', r.s === 200, r);
+  r = await call('POST', '/guruhlar', { davomiylik: 90, nomi: 'X', fan_id: KID, kunlar: [0], soat: '19:00' }, KA); t('kun 0 → 400', r.s === 400, r);
+  r = await call('POST', '/guruhlar', { davomiylik: 90, nomi: 'X', fan_id: KID, kunlar: [8], soat: '19:00' }, KA); t('kun 8 → 400', r.s === 400, r);
+  r = await call('POST', '/guruhlar', { davomiylik: 90, nomi: 'X', fan_id: KID, kunlar: [1], soat: '25:00' }, KA); t('noto\'g\'ri soat → 400', r.s === 400, r);
+  r = await call('POST', '/guruhlar', { davomiylik: 90, nomi: 'X', fan_id: KID, kunlar: [1] }, KA); t('kunlar bor, soat yo\'q → 400', r.s === 400, r);
+  r = await call('POST', '/guruhlar', { davomiylik: 90, nomi: 'X', fan_id: KID, soat: '19:00' }, KA); t('soat bor, kunlar yo\'q → 400', r.s === 400, r);
+  r = await call('POST', '/guruhlar', { davomiylik: 90, oylik_narx: 300000, nomi: 'X', fan_id: KID }, KA); t('jadvalsiz guruh mumkin (jadval bo\'sh)', r.s === 200, r);
   { const nid = r.d.id; r = await call('GET', '/guruhlar', null, KA); const g = r.d.guruhlar.find(x => x.id === nid); t('jadvalsiz: jadval=\'\', kunlar=[], soat=null', g.jadval === '' && g.kunlar.length === 0 && g.soat === null, g); await call('DELETE', `/guruhlar/${nid}`, null, KA); }
-  r = await call('POST', '/guruhlar', { nomi: 'X', fan_id: KID, oylik_narx: -5 }, KA); t('manfiy narx → 400', r.s === 400, r);
-  r = await call('POST', '/guruhlar', { nomi: 'X', fan_id: KID }, KA); t('narxsiz guruh → 400', r.s === 400, r);
-  r = await call('POST', '/guruhlar', { nomi: 'X', fan_id: 99999 }, KA); t('mavjud bo\'lmagan fan → 400', r.s === 400, r);
-  r = await call('POST', '/guruhlar', { nomi: 'X' }, KA); t('fansiz guruh → 400', r.s === 400, r);
+  r = await call('POST', '/guruhlar', { davomiylik: 90, nomi: 'X', fan_id: KID, oylik_narx: -5 }, KA); t('manfiy narx → 400', r.s === 400, r);
+  r = await call('POST', '/guruhlar', { davomiylik: 90, nomi: 'X', fan_id: KID }, KA); t('narxsiz guruh → 400', r.s === 400, r);
+  r = await call('POST', '/guruhlar', { davomiylik: 90, nomi: 'X', fan_id: 99999 }, KA); t('mavjud bo\'lmagan fan → 400', r.s === 400, r);
+  r = await call('POST', '/guruhlar', { davomiylik: 90, nomi: 'X' }, KA); t('fansiz guruh → 400', r.s === 400, r);
   // fan ↔ o'qituvchi bog'liqligi
-  r = await call('POST', '/guruhlar', { oylik_narx: 300000, nomi: 'MAT-1', fan_id: FID2, oqituvchi_id: TID }, KA); t('boshqa fan o\'qituvchisini guruhga qo\'yib bo\'lmaydi → 400', r.s === 400 && /fan/.test(r.d.error), r);
-  r = await call('PUT', `/guruhlar/${GID}`, { nomi: 'PY-1', fan_id: FID2, oqituvchi_id: TID, max_oquvchi: 2 }, KA); t('guruh fani o\'zgarsa o\'qituvchi mos kelishi shart → 400', r.s === 400, r);
-  r = await call('PUT', `/oqituvchilar/${TID}`, { ism: 'Sardor', familiya: 'Karimov', fan_id: FID2 }, KA); t('o\'qituvchi fani boshqa fan guruhida dars berayotganda o\'zgarmaydi → 409', r.s === 409, r);
-  r = await call('POST', '/guruhlar', { oylik_narx: 300000, nomi: 'MAT-1', fan_id: FID2, oqituvchi_id: TMAT, kunlar: [2, 4], soat: '10:00' }, KA); t('mos fan o\'qituvchisi bilan guruh', r.s === 200, r);
+  r = await call('POST', '/guruhlar', { davomiylik: 90, oylik_narx: 300000, nomi: 'MAT-1', fan_id: FID2, oqituvchi_id: TID }, KA); t('boshqa fan o\'qituvchisini guruhga qo\'yib bo\'lmaydi → 400', r.s === 400 && /fan/.test(r.d.error), r);
+  r = await call('PUT', `/guruhlar/${GID}`, { davomiylik: 90, nomi: 'PY-1', fan_id: FID2, oqituvchi_id: TID, max_oquvchi: 2 }, KA); t('guruh fani o\'zgarsa o\'qituvchi mos kelishi shart → 400', r.s === 400, r);
+  r = await call('PUT', `/oqituvchilar/${TID}`, { haq_turi: 'soatbay', soat_stavka: 50000, ism: 'Sardor', familiya: 'Karimov', fan_id: FID2 }, KA); t('o\'qituvchi fani boshqa fan guruhida dars berayotganda o\'zgarmaydi → 409', r.s === 409, r);
+  r = await call('POST', '/guruhlar', { davomiylik: 90, oylik_narx: 300000, nomi: 'MAT-1', fan_id: FID2, oqituvchi_id: TMAT, kunlar: [2, 4], soat: '10:00' }, KA); t('mos fan o\'qituvchisi bilan guruh', r.s === 200, r);
   const GMAT = r.d.id;
   const ids = [];
   for (const n of ['A', 'B', 'C']) { r = await call('POST', '/oquvchilar', { ism: n, telefon: '90' }, KA); ids.push(r.d.id); }
@@ -209,7 +209,7 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
   r = await call('POST', '/lidlar/99999/oquvchi', {}, KA); t('mavjud bo\'lmagan lid → 404', r.s === 404, r);
   // guruh o'chsa ham lid qoladi
   r = await call('POST', '/bot/lid', { guruh_id: GMAT, ism: 'Lid Ikkinchi', telefon: '+998909998877', telegram_id: 777002 }, null, BOT); const LID2 = r.d.id;
-  r = await call('POST', '/guruhlar', { oylik_narx: 1, nomi: 'Vaqtincha', fan_id: FID2 }, KA); const GTMP = r.d.id;
+  r = await call('POST', '/guruhlar', { davomiylik: 90, oylik_narx: 1, nomi: 'Vaqtincha', fan_id: FID2 }, KA); const GTMP = r.d.id;
   r = await call('POST', '/bot/lid', { guruh_id: GTMP, ism: 'Lid Uchinchi', telefon: '+998905554433' }, null, BOT); const LID3 = r.d.id;
   await call('DELETE', `/guruhlar/${GTMP}`, null, KA);
   r = await call('GET', '/lidlar', null, KA); { const l = r.d.items.find(x => x.id === LID3); t('guruh o\'chirilsa lid qoladi (nomi saqlanadi, guruh_id null)', l && l.guruh_id === null && l.guruh_nomi === 'Vaqtincha', l); }
@@ -294,13 +294,13 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
   r = await call('PUT', `/guruhlar/${GID}/davomat`, { sana: YDAY, items: [{ oquvchi_id: ids[0], holat: 'keldi' }] }, KB); t('begona guruhga davomat yozish → 404', r.s === 404, r);
   r = await call('POST', `/guruhlar/${GID}/oquvchilar`, { oquvchi_id: ids[0] }, KB); t('begona guruhga o\'quvchi qo\'shish → 404', r.s === 404, r);
   r = await call('DELETE', `/guruhlar/${GID}/oquvchilar/${ids[0]}`, null, KB); t('begona guruhdan o\'quvchi chiqarish → 404', r.s === 404, r);
-  r = await call('PUT', `/guruhlar/${GID}`, { nomi: 'Hack', fan_id: KID, oylik_narx: 1 }, KB); t('begona guruhni tahrirlash → 404/400', r.s === 404 || r.s === 400, r);
+  r = await call('PUT', `/guruhlar/${GID}`, { davomiylik: 90, nomi: 'Hack', fan_id: KID, oylik_narx: 1 }, KB); t('begona guruhni tahrirlash → 404/400', r.s === 404 || r.s === 400, r);
   r = await call('DELETE', `/guruhlar/${GID}`, null, KB); t('begona guruhni o\'chirish → 404', r.s === 404, r);
   r = await call('PUT', `/fanlar/${KID}`, { nomi: 'Hack' }, KB); t('begona fanni tahrirlash → 404', r.s === 404, r);
   r = await call('DELETE', `/fanlar/${KID}`, null, KB); t('begona fanni o\'chirish → 404', r.s === 404, r);
   r = await call('PUT', `/oquvchilar/${ids[0]}`, { ism: 'Hack' }, KB); t('begona o\'quvchini tahrirlash → 404', r.s === 404, r);
   r = await call('DELETE', `/oquvchilar/${ids[0]}`, null, KB); t('begona o\'quvchini o\'chirish → 404', r.s === 404, r);
-  r = await call('PUT', `/oqituvchilar/${TID}`, { ism: 'Hack', fan_id: KID }, KB); t('begona o\'qituvchini tahrirlash → 404/400', r.s === 404 || r.s === 400, r);
+  r = await call('PUT', `/oqituvchilar/${TID}`, { haq_turi: 'soatbay', soat_stavka: 50000, ism: 'Hack', fan_id: KID }, KB); t('begona o\'qituvchini tahrirlash → 404/400', r.s === 404 || r.s === 400, r);
   r = await call('DELETE', `/oqituvchilar/${TID}`, null, KB); t('begona o\'qituvchini o\'chirish → 404', r.s === 404, r);
   r = await call('POST', '/tolovlar', { oquvchi_id: ids[0], guruh_id: GID, summa: 1000 }, KB); t('begona o\'quvchiga to\'lov kiritish → 404', r.s === 404, r);
   r = await call('DELETE', `/tolovlar/${PAYID}`, null, KB); t('begona to\'lovni o\'chirish → 404', r.s === 404, r);
@@ -321,12 +321,12 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
   r = await call('GET', '/nomzodlar', null, KA); t('F1 nomzodi buzilmagan', r.d.items.some(x => x.id === NX && x.holat === 'yangi'), r.d);
   // F2 ichida boshqa filial obyektlariga bog'lab bo'lmaydi
   r = await call('POST', '/fanlar', { nomi: 'Python' }, KB); const FF2 = r.d.id; t('fan nomi filiallar o\'rtasida takrorlanishi mumkin', r.s === 200, r);
-  r = await call('POST', '/guruhlar', { nomi: 'X', fan_id: KID, oylik_narx: 1 }, KB); t('F2 guruhiga F1 fanini qo\'yib bo\'lmaydi → 400', r.s === 400, r);
-  r = await call('POST', '/oqituvchilar', { ism: 'X', fan_id: KID }, KB); t('F2 o\'qituvchisiga F1 fanini qo\'yib bo\'lmaydi → 400', r.s === 400, r);
+  r = await call('POST', '/guruhlar', { davomiylik: 90, nomi: 'X', fan_id: KID, oylik_narx: 1 }, KB); t('F2 guruhiga F1 fanini qo\'yib bo\'lmaydi → 400', r.s === 400, r);
+  r = await call('POST', '/oqituvchilar', { haq_turi: 'soatbay', soat_stavka: 50000, ism: 'X', fan_id: KID }, KB); t('F2 o\'qituvchisiga F1 fanini qo\'yib bo\'lmaydi → 400', r.s === 400, r);
   r = await call('POST', '/vakansiyalar', { nomi: 'X', fan_id: KID }, KB); t('F2 vakansiyasiga F1 fanini qo\'yib bo\'lmaydi → 400', r.s === 400, r);
-  r = await call('POST', '/oqituvchilar', { ism: 'Dilshod', familiya: 'F2', fan_id: FF2 }, KB); const TF2 = r.d.id;
-  r = await call('POST', '/guruhlar', { nomi: 'F2-1', fan_id: FF2, oqituvchi_id: TID, oylik_narx: 1 }, KB); t('F2 guruhiga F1 o\'qituvchisini qo\'yib bo\'lmaydi → 400', r.s === 400, r);
-  r = await call('POST', '/guruhlar', { nomi: 'F2-1', fan_id: FF2, oqituvchi_id: TF2, oylik_narx: 450000, kunlar: [1, 3], soat: '18:00' }, KB); const GF2 = r.d.id; t('F2 guruhi yaratildi', r.s === 200, r);
+  r = await call('POST', '/oqituvchilar', { haq_turi: 'soatbay', soat_stavka: 50000, ism: 'Dilshod', familiya: 'F2', fan_id: FF2 }, KB); const TF2 = r.d.id;
+  r = await call('POST', '/guruhlar', { davomiylik: 90, nomi: 'F2-1', fan_id: FF2, oqituvchi_id: TID, oylik_narx: 1 }, KB); t('F2 guruhiga F1 o\'qituvchisini qo\'yib bo\'lmaydi → 400', r.s === 400, r);
+  r = await call('POST', '/guruhlar', { davomiylik: 90, nomi: 'F2-1', fan_id: FF2, oqituvchi_id: TF2, oylik_narx: 450000, kunlar: [1, 3], soat: '18:00' }, KB); const GF2 = r.d.id; t('F2 guruhi yaratildi', r.s === 200, r);
   r = await call('POST', `/guruhlar/${GF2}/oquvchilar`, { oquvchi_id: ids[0] }, KB); t('F2 guruhiga F1 o\'quvchisini qo\'shib bo\'lmaydi → 404', r.s === 404, r);
   r = await call('GET', '/fanlar', null, KA, { 'X-Filial-Id': String(F2) }); t('admin X-Filial-Id sarlavhasi bilan filialni almashtira olmaydi', r.s === 200 && r.d.fanlar.some(f => f.id === KID) && !r.d.fanlar.some(f => f.id === FF2), r.d);
   // superadmin filiali
@@ -461,6 +461,76 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
 
     for (const g of [CG, AG, AG2]) await call('DELETE', `/guruhlar/${g}`, null, KA);
     await call('DELETE', '/lidlar/' + LCG, null, KA); await call('DELETE', '/oquvchilar/' + S1, null, KA);
+  }
+
+  // — O'QITUVCHI HAQI VA OYLIKLAR HISOBOTI
+  {
+    const pool = require('../src/db');
+    const T0 = { ism: 'Haq', familiya: 'Test', fan_id: KID };
+    const badT = async (extra, name) => { const x = await call('POST', '/oqituvchilar', { ...T0, ...extra }, KA); t(name, x.s === 400, x); };
+    await badT({}, 'to\'lov turisiz o\'qituvchi → 400');
+    await badT({ haq_turi: 'kunlik' }, 'noto\'g\'ri to\'lov turi → 400');
+    await badT({ haq_turi: 'soatbay' }, 'soatbay: stavkasiz → 400');
+    await badT({ haq_turi: 'soatbay', soat_stavka: 0 }, 'soatbay: 0 stavka → 400');
+    await badT({ haq_turi: 'oylik' }, 'oylik: maoshsiz → 400');
+    await badT({ haq_turi: 'foiz' }, 'foiz: qiymatsiz → 400');
+    await badT({ haq_turi: 'foiz', foiz: 0 }, 'foiz: 0 → 400');
+    await badT({ haq_turi: 'foiz', foiz: 101 }, 'foiz: 100 dan katta → 400');
+    const mk = async extra => (await call('POST', '/oqituvchilar', { ...T0, ...extra }, KA)).d.id;
+    const TS = await mk({ ism: 'Soat', haq_turi: 'soatbay', soat_stavka: 50000, oylik_maosh: 999, foiz: 50 });
+    const TO = await mk({ ism: 'Oylik', haq_turi: 'oylik', oylik_maosh: 3000000 });
+    const TP = await mk({ ism: 'Foiz', haq_turi: 'foiz', foiz: 40 });
+    r = await call('GET', '/oqituvchilar', null, KA);
+    { const a = r.d.items.find(x => x.id === TS), b = r.d.items.find(x => x.id === TO), c = r.d.items.find(x => x.id === TP);
+      t('soatbay: faqat stavka saqlanadi (oylik va foiz tozalanadi)', a.haq_turi === 'soatbay' && a.soat_stavka === 50000 && a.oylik_maosh === null && a.foiz === null, a);
+      t('oylik: faqat maosh saqlanadi', b.haq_turi === 'oylik' && b.oylik_maosh === 3000000 && b.soat_stavka === null && b.foiz === null, b);
+      t('foiz: faqat foiz saqlanadi', c.haq_turi === 'foiz' && c.foiz === 40 && c.soat_stavka === null && c.oylik_maosh === null, c); }
+
+    // guruhda davomiylik majburiy (yopilgan guruh bundan mustasno)
+    const gB = extra => ({ nomi: 'HAQ', fan_id: KID, oqituvchi_id: TS, oylik_narx: 1, davomiylik: 90, ...extra });
+    r = await call('POST', '/guruhlar', gB({ davomiylik: undefined }), KA); t('guruh: davomiylik majburiy → 400', r.s === 400 && /davomiylig/i.test(r.d.error), r);
+    r = await call('POST', '/guruhlar', gB({ davomiylik: '' }), KA); t('guruh: bo\'sh davomiylik → 400', r.s === 400, r);
+    r = await call('POST', '/guruhlar', gB({ davomiylik: undefined, holat: 'yopilgan' }), KA); t('yopilgan guruh davomiyligisiz saqlanadi', r.s === 200, r);
+    if (r.d.id) await call('DELETE', `/guruhlar/${r.d.id}`, null, KA);
+
+    // hisob uchun ma'lumot: o'tgan oy (bugun oyning 1-kuni bo'lsa ham sanalar kelajakda bo'lmasin)
+    const dd = new Date(), PM = new Date(Date.UTC(dd.getUTCFullYear(), dd.getUTCMonth() - 1, 1)).toISOString().slice(0, 7);
+    const gS = (await call('POST', '/guruhlar', gB({ nomi: 'HAQ-S', oqituvchi_id: TS, davomiylik: 90 }), KA)).d.id;
+    const gS2 = (await call('POST', '/guruhlar', gB({ nomi: 'HAQ-S2', oqituvchi_id: TS, davomiylik: 60 }), KA)).d.id;
+    const gO = (await call('POST', '/guruhlar', gB({ nomi: 'HAQ-O', oqituvchi_id: TO, davomiylik: 60 }), KA)).d.id;
+    const gP = (await call('POST', '/guruhlar', gB({ nomi: 'HAQ-P', oqituvchi_id: TP, davomiylik: 60, oylik_narx: 200000 }), KA)).d.id;
+    const SA = (await call('POST', '/oquvchilar', { ism: 'A', familiya: 'Haq', telefon: '+998900000011' }, KA)).d.id;
+    const SB = (await call('POST', '/oquvchilar', { ism: 'B', familiya: 'Haq', telefon: '+998900000012' }, KA)).d.id;
+    const dv = (g, o, kun) => pool.query(`INSERT INTO davomat(guruh_id,oquvchi_id,sana,holat) VALUES($1,$2,$3,'keldi')`, [g, o, `${PM}-${kun}`]);
+    await dv(gS, SA, '03'); await dv(gS, SB, '03'); await dv(gS, SA, '10'); // 2 ta dars (bir kunda 2 o'quvchi = 1 dars)
+    await dv(gS2, SA, '05');                                                 // davomiyligi keyin o'chiriladi
+    await dv(gO, SA, '04');
+    await pool.query('UPDATE guruhlar SET davomiylik=NULL WHERE id=$1', [gS2]);
+    const tl = (o, g, summa, sana) => pool.query('INSERT INTO tolovlar(oquvchi_id,guruh_id,summa,sana) VALUES($1,$2,$3,$4)', [o, g, summa, sana]);
+    await tl(SA, gP, 300000, `${PM}-06`); await tl(SB, gP, 100000, `${PM}-20`);
+    await tl(SA, gP, 50000, new Date().toISOString().slice(0, 10));         // joriy oy to'lovi o'tgan oy hisobiga kirmaydi (oy chegarasi)
+    r = await call('GET', `/oqituvchi-hisobot?oy=${PM}`, null, KA);
+    t('hisobot: 200', r.s === 200 && Array.isArray(r.d.items), r);
+    const H = id => r.d.items.find(x => x.id === id);
+    { const a = H(TS); t('soatbay: 2 dars × 90 daq = 3 soat × 50 000 = 150 000', a && a.darslar === 3 && a.soat === 3 && a.summa === 150000, a); }
+    { const a = H(TS); t('soatbay: davomiyligi yo\'q guruh ogohlantiriladi, summaga kirmaydi', a && a.ogohlantirish.some(w => /davomiylig/i.test(w)) && a.guruhlar.find(g => g.id === gS2).summa === 0, a); }
+    { const a = H(TO); t('oylik: qat\'iy 3 000 000', a && a.summa === 3000000 && a.ogohlantirish.length === 0, a); }
+    { const a = H(TP); t('foiz: guruhga o\'sha oy tushgan 400 000 dan 40% = 160 000 (joriy oy to\'lovi kirmaydi)', a && a.tushum === 400000 && a.summa === 160000, a); }
+    t('hisobot: jami = o\'qituvchilar summalari yig\'indisi', r.d.jami === r.d.items.reduce((s, x) => s + x.summa, 0), r.d.jami);
+    r = await call('GET', `/oqituvchi-hisobot?oy=${new Date(Date.now() + 70 * 86400000).toISOString().slice(0, 7)}`, null, KA); t('hisobot: kelajak oyi → 400', r.s === 400, r);
+    r = await call('GET', '/oqituvchi-hisobot?oy=2026-13', null, KA); t('hisobot: noto\'g\'ri oy → 400', r.s === 400, r);
+    r = await call('GET', `/oqituvchi-hisobot?oy=${PM}`); t('hisobot: tokensiz → 401', r.s === 401, r);
+    r = await call('GET', `/oqituvchi-hisobot?oy=${PM}`, null, KB); t('hisobot: boshqa filial o\'qituvchilarini ko\'rmaydi', r.s === 200 && !r.d.items.some(x => [TS, TO, TP].includes(x.id)), r);
+    { const x = await fetch(`${B}/oqituvchi-hisobot/excel?oy=${PM}`, { headers: { Authorization: 'Bearer ' + KA } }); const buf = Buffer.from(await x.arrayBuffer());
+      t('hisobot: Excel (.xlsx) yuklanadi', x.status === 200 && /spreadsheetml/.test(x.headers.get('content-type')) && buf.length > 1000 && buf.slice(0, 2).toString() === 'PK', { s: x.status, n: buf.length }); }
+    // to'lov turini o'zgartirish: eski qiymatlar tozalanadi
+    r = await call('PUT', `/oqituvchilar/${TS}`, { ...T0, ism: 'Soat', haq_turi: 'foiz', foiz: 25 }, KA); t('to\'lov turini soatbaydan foizga o\'zgartirish', r.s === 200, r);
+    r = await call('GET', '/oqituvchilar', null, KA);
+    { const a = r.d.items.find(x => x.id === TS); t('o\'zgargach: stavka tozalangan, foiz 25', a.haq_turi === 'foiz' && a.foiz === 25 && a.soat_stavka === null, a); }
+    r = await call('PUT', `/oqituvchilar/${TS}`, { ...T0, ism: 'Soat' }, KA); t('tahrirda to\'lov turisiz → 400', r.s === 400, r);
+    for (const g of [gS, gS2, gO, gP]) await call('DELETE', `/guruhlar/${g}`, null, KA);
+    for (const o of [TS, TO, TP]) await call('DELETE', `/oqituvchilar/${o}`, null, KA);
+    for (const o of [SA, SB]) await call('DELETE', `/oquvchilar/${o}`, null, KA);
   }
 
   // — tozalash

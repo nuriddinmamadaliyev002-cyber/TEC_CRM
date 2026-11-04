@@ -470,3 +470,26 @@ input.has-clr,textarea.has-clr{padding-right:36px}
 .sd em.eq{background:color-mix(in srgb,var(--muted) 14%,transparent);color:var(--muted)}
 .sd small{color:var(--muted);font-size:12.5px}
 @media (max-width:640px){.stats+.stats{margin-top:10px}.sd{font-size:12px;margin-top:6px}.sd small{font-size:12px}}
+
+/* ── Bosh sahifa: eng katta qarzdorlar ── */
+.dq-list{display:flex;flex-direction:column}
+.dq-row{display:flex;align-items:center;gap:10px;padding:4px 0;border-bottom:1px solid var(--line)}
+.dq-row:last-child{border-bottom:0}
+.dq-main{flex:1;min-width:0;display:flex;align-items:center;gap:12px;padding:8px 6px;border:0;background:none;text-align:left;cursor:pointer;border-radius:10px;font:inherit;color:inherit}
+.dq-main:hover,.dq-main:focus-visible{background:color-mix(in srgb,var(--brand) 6%,var(--card))}
+.dq-rank{flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:800;background:color-mix(in srgb,var(--danger) 12%,transparent);color:var(--danger)}
+.dq-name{flex:1;min-width:0;overflow-wrap:anywhere}
+.dq-name b{font-weight:700}
+.dq-name small,.dq-amt small{display:block;color:var(--muted);font-size:12.5px;font-weight:500;line-height:1.35}
+.dq-amt{flex:none;text-align:right;max-width:46%}
+.dq-amt b{font-size:16px;white-space:nowrap}
+.dq-call{flex:none;min-width:176px;justify-content:center;white-space:nowrap}
+.dq-call i{font-style:normal}
+.dq-no{text-align:center;font-size:13px}
+@media (max-width:640px){
+  .dq-row{flex-direction:column;align-items:stretch;gap:2px;padding:8px 0 10px}
+  .dq-main{padding:6px 2px}
+  .dq-amt{max-width:50%}
+  .dq-call{min-height:42px;font-size:15px;margin:2px 2px 0}
+  .dq-no{text-align:left;padding:2px 36px}
+}

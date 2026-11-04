@@ -221,6 +221,41 @@
     return load();
   }
 
+  // ═══ Bosh sahifa: eng katta qarzdorlar (top 5) ═══
+  // Qarz — oxirgi 12 oy bo'yicha yig'ilgan (shu oy + oldingi oylar). Qator bosilsa — To'lovlar sahifasi shu o'quvchi bilan ochiladi,
+  // telefon tugmasi bosilsa — to'g'ridan-to'g'ri qo'ng'iroq.
+  const OY_DAN = ['Yanvardan', 'Fevraldan', 'Martdan', 'Apreldan', 'Maydan', 'Iyundan', 'Iyuldan', 'Avgustdan', 'Sentabrdan', 'Oktabrdan', 'Noyabrdan', 'Dekabrdan'];
+  const toPay = patch => { Object.assign(RS, { f: '', g: '', t: '', u: '', h: '', q: '', oy: thisMonth() }, patch); go('tolovlar'); };
+  function debtors(box) {
+    let items = [];
+    box.innerHTML = `<div class="ch-head"><h3>Eng katta qarzdorlar</h3><button type="button" class="btn sm dq-all hidden">Barchasi →</button></div><div class="ch-sum"></div><div class="dq-list"><div class="empty">Yuklanmoqda…</div></div>`;
+    const $ = q => box.querySelector(q);
+    const row = (x, i) => {
+      const nm = `${x.familiya} ${x.ism}`.trim(), cur = thisMonth();
+      const parts = [x.shu_oy > 0 ? `shu oy ${IC.money(x.shu_oy)}` : '', x.oldingi > 0 ? `oldingi oylar ${IC.money(x.oldingi)}` : ''].filter(Boolean).join(' · ');
+      const meta = [x.guruhlar, `${x.oylar} oy qarz` + (x.eng_eski < cur ? ` · ${OY_DAN[+x.eng_eski.slice(5) - 1]} beri` : '')].filter(Boolean).join(' · ');
+      return `<div class="dq-row"><button type="button" class="dq-main" data-i="${i}"><span class="dq-rank">${i + 1}</span>`
+        + `<span class="dq-name"><b>${esc(nm)}</b>${x.faol ? '' : ' <em class="badge off">Nofaol</em>'}<small>${esc(meta)}</small></span>`
+        + `<span class="dq-amt"><b class="bad">${esc(IC.money(x.jami))}</b><small>${esc(parts)}</small></span></button>`
+        + (x.telefon ? `<a class="btn dq-call" href="tel:${esc(telHref(x.telefon))}" aria-label="Qo'ng'iroq: ${esc(nm)}"><i aria-hidden="true">📞</i>${esc(fmtPhone(x.telefon))}</a>` : `<span class="muted dq-call dq-no">Telefon yo'q</span>`) + `</div>`;
+    };
+    box.onclick = e => {
+      const m = e.target.closest('.dq-main');
+      if (m) { const x = items[+m.dataset.i]; return x && toPay({ q: `${x.familiya} ${x.ism}`.trim(), h: 'qarzdor', oy: x.shu_oy > 0 ? thisMonth() : x.eng_eski }); }
+      if (e.target.closest('.dq-all')) toPay({ h: 'qarzdor' });
+    };
+    return (async () => {
+      let d;
+      try { d = await IC.api('GET', '/grafik/qarzdorlar?limit=5'); } catch (x) { if (box.isConnected) $('.dq-list').innerHTML = `<div class="empty">${esc(x.message)}</div>`; return; }
+      if (!box.isConnected) return;
+      items = d.items;
+      if (!d.qarzdorlar) { $('.dq-list').innerHTML = "<div class=\"empty\">Qarzdor yo'q — barcha o'quvchilar to'lagan 🎉</div>"; return; }
+      $('.ch-sum').innerHTML = `<div class="muted ch-sub">Jami qarz (oxirgi ${d.oylar} oy): <b class="bad">${esc(IC.money(d.jami_qarz))}</b> · ${d.qarzdorlar} ta o'quvchi</div>`;
+      $('.dq-list').innerHTML = items.map(row).join('');
+      const all = $('.dq-all'); all.classList.remove('hidden'); all.textContent = d.qarzdorlar > items.length ? `Barchasi (${d.qarzdorlar}) →` : 'Barchasi →';
+    })();
+  }
+
   // Kartadagi o'zgarish belgisi: [sinf, matn] yoki null. up = yaxshi (yashil), down = yomon (qizil).
   const dPct = (now, prev) => { if (prev > 0) { const p = Math.round((now - prev) / prev * 100); return [p > 0 ? 'up' : p < 0 ? 'down' : 'eq', (p > 0 ? '▲ +' : p < 0 ? '▼ −' : '= ') + Math.abs(p) + '%']; } return now > 0 ? ['up', '▲ yangi'] : null; };
   const dCnt = (now, prev) => { const d = now - prev; return [d > 0 ? 'up' : d < 0 ? 'down' : 'eq', d > 0 ? '▲ +' + d : d < 0 ? '▼ −' + Math.abs(d) : "= o'zgarmagan"]; };
@@ -238,12 +273,13 @@
       ['Shu oy qarzi', IC.money(h.qarz), 'tolovlar', { h: 'qarzdor', note: h.qarzdor ? `${h.qarzdor} ta o'quvchi qarzdor` : (h.reja > 0 ? "Qarz yo'q" : '') }],
       ['Jami tushum', IC.money(s.jami_tushum), 'tolovlar']];
     view.innerHTML = `<div class="head"><h2>Bosh sahifa</h2></div><div class="stats" id="st1">${top.map(card).join('')}</div><div class="stats" id="st2">${pay.map(card).join('')}</div>
-      <div class="dash-charts"><section class="card chart-card wide" id="chOq" aria-label="O'quvchilar soni dinamikasi"></section>
+      <div class="dash-charts"><section class="card chart-card wide" id="chDebt" aria-label="Eng katta qarzdorlar"></section>
+      <section class="card chart-card wide" id="chOq" aria-label="O'quvchilar soni dinamikasi"></section>
       <section class="card chart-card wide" id="chPay" aria-label="To'lovlar hisoboti"></section></div>`;
     // Karta bosilsa — tegishli bo'limga o'tadi (to'lov kartalarida joriy oy; «qarzi» kartasida «Qarzdor» filtri bilan)
     const open = c => { if (!c) return; const k = c.dataset.go; if (k === 'tolovlar') Object.assign(RS, { f: '', g: '', t: '', u: '', q: '', h: c.dataset.h || '', oy: thisMonth() }); go(k); };
     view.querySelectorAll('.stats').forEach(g => { g.onclick = e => open(e.target.closest('.stat.go')); g.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(e.target.closest('.stat.go')); } }; });
-    studentChart(view.querySelector('#chOq')); payCharts(view.querySelector('#chPay')); // grafiklar alohida yuklanadi — kartalar kutib turmaydi
+    debtors(view.querySelector('#chDebt')); studentChart(view.querySelector('#chOq')); payCharts(view.querySelector('#chPay')); // grafiklar alohida yuklanadi — kartalar kutib turmaydi
   };
 
   S.fanlar = () => crud({
@@ -562,8 +598,10 @@
   const tgLink = x => (x.username ? `<div class="muted" style="font-size:13px"><a href="https://t.me/${esc(x.username)}" target="_blank" rel="noopener">@${esc(x.username)}</a></div>` : '');
   // Telefon: +998901234567 → +998 90 123 45 67 (boshqa formatdagi raqam o'zgarmaydi)
   const fmtPhone = t => { const m = /^\+?998(\d{2})(\d{3})(\d{2})(\d{2})$/.exec(String(t || '').replace(/[\s()\-.]/g, '')); return m ? `+998 ${m[1]} ${m[2]} ${m[3]} ${m[4]}` : String(t || ''); };
+  // tel: havolasi uchun: 998901234567 → +998901234567 (boshqa formatlar o'zgarmaydi)
+  const telHref = t => { const d = String(t || '').replace(/[\s()\-.]/g, ''); return /^998\d{9}$/.test(d) ? '+' + d : d; };
   // Aloqa: telefon (tel: havola) va Telegram (@username → t.me) alohida bosiladigan tugmalar
-  const contact = x => `<div class="ct">${x.telefon ? `<a class="ct-l tel" href="tel:${esc(x.telefon)}"><i aria-hidden="true">📞</i>${esc(fmtPhone(x.telefon))}</a>` : ''}`
+  const contact = x => `<div class="ct">${x.telefon ? `<a class="ct-l tel" href="tel:${esc(telHref(x.telefon))}"><i aria-hidden="true">📞</i>${esc(fmtPhone(x.telefon))}</a>` : ''}`
     + (x.username ? `<a class="ct-l tg" href="https://t.me/${esc(x.username)}" target="_blank" rel="noopener"><i aria-hidden="true">✈️</i>@${esc(x.username)}</a>`
       : x.telegram_id ? '<span class="muted ct-n">Telegram: username yo\'q</span>' : '') + '</div>';
   const LID = { yangi: ['Yangi', 'warn'], aloqada: ['Aloqada', ''], yozildi: ['Yozildi', 'ok'], rad: ['Rad etildi', 'off'] };

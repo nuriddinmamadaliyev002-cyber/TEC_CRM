@@ -865,6 +865,40 @@ router.get('/grafik/tolovlar', wrap(async (req, res) => {
   res.json({ ok: true, oy, ...rejaHisobot(rows), usul: Object.fromEntries(USULLAR.map(u => [u, round2(sumBy(rows, x => x.usul_summa[u]))])) });
 }));
 
+// ═══ GRAFIK: eng katta qarzdorlar ═══════════════════════════════════════════
+// Reestr oyma-oy ishlaydi (har oyning qarzi alohida), shuning uchun o'quvchining umumiy qarzi — oxirgi QARZ_OYLAR oy qarzlari yig'indisi:
+// har oy uchun qarz = max(guruh oylik narxi − shu oydagi to'lovlar, 0). Oyda ko'rinish qoidalari reestrdagi bilan bir xil
+// (guruhga qo'shilgan, guruh boshlangan/yopilmagan, o'quvchi o'sha oyda faol bo'lgan). Narxi 0 bo'lgan guruhlar hisobga kirmaydi.
+const QARZ_OYLAR = 12;
+router.get('/grafik/qarzdorlar', wrap(async (req, res) => {
+  const limit = Math.min(Math.max(int(req.query.limit) || 5, 1), 20);
+  const cur = todayISO().slice(0, 7), start = monthShift(cur, -(QARZ_OYLAR - 1));
+  const r = await pool.query(`
+    WITH m AS (SELECT d::date AS bosh FROM generate_series($2::date, $3::date, interval '1 month') d),
+    q AS (
+      SELECT o.id AS oquvchi_id, o.ism, o.familiya, o.telefon, o.faol, g.nomi AS guruh, m.bosh,
+             GREATEST(g.oylik_narx::float - COALESCE(t.summa, 0)::float, 0) AS qarz
+        FROM m
+        JOIN guruh_oquvchilari x ON (x.qoshilgan AT TIME ZONE 'Asia/Tashkent')::date < m.bosh + INTERVAL '1 month'
+        JOIN oquvchilar o ON o.id = x.oquvchi_id
+        JOIN guruhlar g ON g.id = x.guruh_id
+        LEFT JOIN LATERAL (SELECT SUM(summa) AS summa FROM tolovlar
+                            WHERE oquvchi_id = x.oquvchi_id AND guruh_id = x.guruh_id AND sana >= m.bosh AND sana < m.bosh + INTERVAL '1 month') t ON TRUE
+       WHERE g.filial_id = $1 AND g.oylik_narx > 0
+         AND (g.boshlanish IS NULL OR g.boshlanish < m.bosh + INTERVAL '1 month')
+         AND (g.yopilgan_sana IS NULL OR g.yopilgan_sana >= m.bosh)
+         AND (o.faol OR o.nofaol_sana >= m.bosh + INTERVAL '1 month'))
+    SELECT oquvchi_id, MAX(ism) AS ism, MAX(familiya) AS familiya, MAX(telefon) AS telefon, BOOL_OR(faol) AS faol,
+           SUM(qarz)::float AS jami, COALESCE(SUM(qarz) FILTER (WHERE bosh = $3::date), 0)::float AS shu_oy,
+           (COUNT(DISTINCT bosh) FILTER (WHERE qarz > 0))::int AS oylar,
+           to_char(MIN(bosh) FILTER (WHERE qarz > 0), 'YYYY-MM') AS eng_eski,
+           STRING_AGG(DISTINCT guruh, ', ') FILTER (WHERE qarz > 0) AS guruhlar
+      FROM q GROUP BY oquvchi_id HAVING SUM(qarz) > 0
+     ORDER BY jami DESC, eng_eski ASC, oquvchi_id`, [req.filialId, start + '-01', cur + '-01']);
+  const items = r.rows.slice(0, limit).map(x => ({ ...x, jami: round2(x.jami), shu_oy: round2(x.shu_oy), oldingi: round2(x.jami - x.shu_oy) }));
+  res.json({ ok: true, oylar: QARZ_OYLAR, jami_qarz: round2(sumBy(r.rows, x => x.jami)), qarzdorlar: r.rows.length, items });
+}));
+
 // ═══ STATISTIKA ══════════════════════════════════════════════════════════════
 router.get('/stats', wrap(async (req, res) => {
   // Taqqoslash uchun: o'tgan oyning SHU KUNIGACHA tushumi (yarim oyni to'liq oy bilan solishtirmaymiz) va o'tgan oy oxiridagi faol o'quvchilar

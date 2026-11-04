@@ -840,6 +840,27 @@ router.get('/grafik/oquvchilar', wrap(async (req, res) => {
   res.json({ ok: true, davr, items: r.rows });
 }));
 
+// ═══ GRAFIK: oylik to'lovlar hisoboti (doira diagrammalar) ═══════════════════
+// Raqamlar «To'lovlar» reestri bilan bir xil manbadan (reestrRows) olinadi — ikki joyda har xil son chiqmasin.
+//  • Reja diagrammasi (faqat oylik narxi bor qatorlar): to'langan summa (narxdan oshmaydi) / qisman to'laganlarning qolgan qarzi / umuman to'lamaganlarning qarzi.
+//    Uchalasi yig'indisi = oylik reja (narxlar yig'indisi). yigilish = to'langan ÷ reja.
+//  • To'lov usuli: shu oyda kiritilgan to'lovlar naqd / karta / o'tkazma bo'yicha.
+const round2 = n => Math.round(n * 100) / 100;
+router.get('/grafik/tolovlar', wrap(async (req, res) => {
+  const oy = String(req.query.oy || '');
+  if (!oyOk(oy)) return bad(res, "Oy noto'g'ri (kelajak oyini ko'rib bo'lmaydi)");
+  const rows = await reestrRows(oy, req.filialId);
+  const plan = rows.filter(x => x.narx > 0);
+  const sum = (a, f) => a.reduce((t, x) => t + f(x), 0);
+  const qis = plan.filter(x => x.holat === 'qisman'), yoq = plan.filter(x => x.holat === 'yoq');
+  const reja = sum(plan, x => x.narx), tolangan = sum(plan, x => Math.min(x.tolangan, x.narx));
+  res.json({ ok: true, oy, reja: round2(reja), tolangan: round2(tolangan),
+    qisman_qarz: round2(sum(qis, x => x.qarz)), yoq_qarz: round2(sum(yoq, x => x.qarz)),
+    oquvchi: { jami: plan.length, tolagan: plan.length - qis.length - yoq.length, qisman: qis.length, yoq: yoq.length },
+    yigilish: reja > 0 ? Math.round(tolangan / reja * 1000) / 10 : null,
+    usul: Object.fromEntries(USULLAR.map(u => [u, round2(sum(rows, x => x.usul_summa[u]))])) });
+}));
+
 // ═══ STATISTIKA ══════════════════════════════════════════════════════════════
 router.get('/stats', wrap(async (req, res) => {
   const r = await pool.query(`

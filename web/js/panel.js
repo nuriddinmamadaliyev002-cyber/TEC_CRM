@@ -74,7 +74,7 @@
   // Grafik konteyner kengligiga qarab qayta chiziladi; sichqoncha/barmoq bilan oy ustiga bosilsa izoh chiqadi.
   const OY_QISQA = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek'];
   const OY_TO_LIQ = ['Yanvar', 'Fevral', 'Mart', 'Aprel', 'May', 'Iyun', 'Iyul', 'Avgust', 'Sentabr', 'Oktabr', 'Noyabr', 'Dekabr'];
-  const DASH = { davr: '12' };
+  const DASH = { davr: '12', oy: null }; // oy: to'lovlar hisoboti oyi (birinchi ochilganda joriy oy)
   const niceStep = v => { if (v <= 1) return 1; const e = Math.pow(10, Math.floor(Math.log10(v))), f = v / e; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e; };
   const sgn = n => (n > 0 ? '+' + n : n < 0 ? '−' + Math.abs(n) : '0');
 
@@ -152,14 +152,84 @@
     return load();
   }
 
+  // ═══ Bosh sahifa: oylik to'lovlar hisoboti — ikkita doira diagramma (donut) ═══
+  // 1) Reja: to'langan / qisman to'laganlarning qarzi / to'lamaganlarning qarzi (yig'indisi = oylik reja, markazda yig'ilish foizi).
+  // 2) To'lov usuli: naqd / karta / o'tkazma. Bo'lak yoki izoh qatori bosilsa — «To'lovlar» sahifasi shu filtr bilan ochiladi.
+  const pieNum = n => IC.money(n).replace(" so'm", '');
+  const pct = (v, t) => (t > 0 ? Math.round(v / t * 1000) / 10 : 0);
+  const pctTxt = n => String(n).replace('.', ',') + '%';
+  const polar = (cx, cy, r, a) => `${(cx + r * Math.cos(a)).toFixed(2)},${(cy + r * Math.sin(a)).toFixed(2)}`;
+  // parts: [{k, v}] → har bir bo'lak uchun SVG path (bitta bo'lak 100% bo'lsa — to'liq halqa)
+  function donutPaths(parts, cx, cy, R, r) {
+    const tot = parts.reduce((a, x) => a + x.v, 0), live = parts.filter(x => x.v > 0);
+    if (!tot) return '';
+    if (live.length === 1) return `<path class="pie-s s-${live[0].k}" data-k="${live[0].k}" tabindex="0" role="button" fill-rule="evenodd" d="M${cx - R},${cy} A${R},${R} 0 1 1 ${cx + R},${cy} A${R},${R} 0 1 1 ${cx - R},${cy} Z M${cx - r},${cy} A${r},${r} 0 1 0 ${cx + r},${cy} A${r},${r} 0 1 0 ${cx - r},${cy} Z"/>`;
+    let a0 = -Math.PI / 2;
+    return live.map(x => {
+      const a1 = a0 + x.v / tot * 2 * Math.PI, big = a1 - a0 > Math.PI ? 1 : 0;
+      const d = `M${polar(cx, cy, R, a0)} A${R},${R} 0 ${big} 1 ${polar(cx, cy, R, a1)} L${polar(cx, cy, r, a1)} A${r},${r} 0 ${big} 0 ${polar(cx, cy, r, a0)} Z`;
+      a0 = a1; return `<path class="pie-s s-${x.k}" data-k="${x.k}" tabindex="0" role="button" d="${d}"/>`;
+    }).join('');
+  }
+  // Bitta diagramma bloki: sarlavha + donut (markazda matn) + bosiladigan izoh qatorlari
+  function pieBox(title, parts, centerBig, centerSmall, aria) {
+    const tot = parts.reduce((a, x) => a + x.v, 0);
+    const svg = tot > 0
+      ? `<svg class="pie" viewBox="0 0 200 200" role="img" aria-label="${esc(aria)}">${donutPaths(parts, 100, 100, 92, 58)}<text class="pie-big" x="100" y="102" text-anchor="middle" style="font-size:${centerBig.length <= 7 ? 24 : centerBig.length <= 9 ? 19 : 15}px">${esc(centerBig)}</text><text class="pie-sm" x="100" y="122" text-anchor="middle">${esc(centerSmall)}</text></svg>`
+      : '<div class="empty pie-empty">Ma\'lumot yo\'q</div>';
+    const legend = parts.map(x => `<button type="button" class="pl-row${x.v > 0 ? '' : ' zero'}" data-k="${x.k}"><i class="pl-dot s-${x.k}"></i>`
+      + `<span class="pl-t">${esc(x.t)}${x.sub ? `<small>${esc(x.sub)}</small>` : ''}</span><span class="pl-v">${esc(IC.money(x.v))}<small>${pctTxt(pct(x.v, tot))}</small></span></button>`).join('');
+    return `<div class="pie-box"><h4>${esc(title)}</h4><div class="pie-wrap">${svg}</div><div class="pie-leg">${legend}</div></div>`;
+  }
+  function payCharts(box) {
+    let seq = 0;
+    const oyNow = () => DASH.oy || (DASH.oy = thisMonth()); // thisMonth() pastroqda aniqlanadi — shuning uchun kech hisoblanadi
+    box.innerHTML = `<div class="ch-head"><h3>To'lovlar hisoboti</h3><div class="mnav"><button class="btn sm" data-m="-1" type="button" aria-label="Oldingi oy">‹</button><b class="ml"></b><button class="btn sm" data-m="1" type="button" aria-label="Keyingi oy">›</button></div></div>`
+      + `<div class="ch-sum"></div><div class="pie-grid"><div class="empty">Yuklanmoqda…</div></div>`;
+    const $ = q => box.querySelector(q);
+    // Bosilganda «To'lovlar» sahifasi: oy va filtr o'rnatiladi (qolgan filtrlar tozalanadi)
+    const goPay = patch => { Object.assign(RS, { f: '', g: '', t: '', u: '', h: '', q: '', oy: oyNow() }, patch); go('tolovlar'); };
+    const load = async () => {
+      const my = ++seq, oy = oyNow();
+      $('.ml').textContent = oyNomi(oy); $('[data-m="1"]').disabled = oy >= thisMonth();
+      $('.pie-grid').innerHTML = '<div class="empty">Yuklanmoqda…</div>'; $('.ch-sum').innerHTML = '';
+      let d;
+      try { d = await IC.api('GET', '/grafik/tolovlar?oy=' + oy); } catch (x) { if (my === seq && box.isConnected) $('.pie-grid').innerHTML = `<div class="empty">${esc(x.message)}</div>`; return; }
+      if (my !== seq || !box.isConnected) return; // oraliqda boshqa oy tanlangan
+      const qarz = d.qisman_qarz + d.yoq_qarz, nTol = d.oquvchi.tolagan + d.oquvchi.qisman;
+      const reja = [
+        { k: 'ok', t: "To'langan", v: d.tolangan, sub: `${nTol} ta o'quvchi to'lov qilgan` },
+        { k: 'warn', t: "Qisman to'langan (qolgan qarz)", v: d.qisman_qarz, sub: `${d.oquvchi.qisman} ta o'quvchi` },
+        { k: 'bad', t: "To'lanmagan (qarz)", v: d.yoq_qarz, sub: `${d.oquvchi.yoq} ta o'quvchi` }];
+      const usullar = [{ k: 'u1', t: 'Naqd', v: d.usul.naqd }, { k: 'u2', t: 'Karta', v: d.usul.karta }, { k: 'u3', t: "Hisob raqamga o'tkazma", v: d.usul.otkazma }];
+      const jami = usullar.reduce((a, x) => a + x.v, 0);
+      $('.ch-sum').innerHTML = d.reja > 0
+        ? `<div><span class="ch-big">${d.yigilish == null ? '—' : pctTxt(d.yigilish)}</span> <span class="muted">yig'ildi</span></div><div class="muted ch-sub">Reja: <b>${esc(IC.money(d.reja))}</b> · To'langan: <span class="ok">${esc(IC.money(d.tolangan))}</span> · Qarz: <span class="bad">${esc(IC.money(qarz))}</span></div>`
+        : `<div class="muted ch-sub">Bu oy uchun oylik narxi belgilangan guruh yo'q</div>`;
+      $('.pie-grid').innerHTML = pieBox("Oylik reja bo'yicha", reja, d.yigilish == null ? '—' : pctTxt(d.yigilish), "yig'ildi", `Yig'ilish ${d.yigilish == null ? '' : pctTxt(d.yigilish)}`)
+        + pieBox("To'lov usuli bo'yicha", usullar, pieNum(jami), "so'm", `To'lov usullari, jami ${IC.money(jami)}`);
+    };
+    box.onclick = e => {
+      const m = e.target.closest('[data-m]');
+      if (m) { const n = oyNow(), nx = moveMonth(n, Number(m.dataset.m)); if (nx > thisMonth()) return; DASH.oy = nx; return load(); }
+      const el = e.target.closest('[data-k]'); if (!el) return;
+      const k = el.dataset.k, inPlan = !!el.closest('.pie-box') && el.closest('.pie-box') === box.querySelector('.pie-box');
+      if (inPlan) goPay(k === 'ok' ? {} : { h: 'qarzdor' });                                  // to'langan → hammasi; qarz bo'laklari → qarzdorlar
+      else goPay({ u: { u1: 'naqd', u2: 'karta', u3: 'otkazma' }[k] || '' });                   // usul bo'yicha filtr
+    };
+    box.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('.pie-s')) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent('click', { bubbles: true })); } };
+    return load();
+  }
+
   S.dash = async () => {
     const s = (await IC.api('GET', '/stats')).stats;
     const it = [['Faol fanlar', s.fanlar], ['Faol guruhlar', s.guruhlar], ["O'quvchilar", s.oquvchilar], ["O'qituvchilar", s.oqituvchilar],
       ['Yangi lidlar', s.yangi_lidlar], ['Yangi nomzodlar', s.yangi_nomzodlar],
       ['Shu oy tushum', IC.money(s.oy_tushum)], ['Jami tushum', IC.money(s.jami_tushum)]];
     view.innerHTML = `<div class="head"><h2>Bosh sahifa</h2></div><div class="stats">${it.map(([l, v]) => `<div class="card stat"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join('')}</div>
-      <div class="dash-charts"><section class="card chart-card" id="chOq" aria-label="O'quvchilar soni dinamikasi"></section></div>`;
-    studentChart(view.querySelector('#chOq')); // grafik alohida yuklanadi — kartalar kutib turmaydi
+      <div class="dash-charts"><section class="card chart-card wide" id="chOq" aria-label="O'quvchilar soni dinamikasi"></section>
+      <section class="card chart-card wide" id="chPay" aria-label="To'lovlar hisoboti"></section></div>`;
+    studentChart(view.querySelector('#chOq')); payCharts(view.querySelector('#chPay')); // grafiklar alohida yuklanadi — kartalar kutib turmaydi
   };
 
   S.fanlar = () => crud({

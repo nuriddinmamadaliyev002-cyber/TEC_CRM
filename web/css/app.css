@@ -432,3 +432,29 @@ input.has-clr,textarea.has-clr{padding-right:36px}
   .ch-range{flex:1 1 100%}.ch-range .chip{flex:1 1 0;min-height:38px}
   .ch-big{font-size:24px}
 }
+
+/* ── Bosh sahifa: to'lovlar donut diagrammalari ── */
+.chart-card .mnav{display:flex;align-items:center;gap:8px}
+.chart-card .mnav b{min-width:120px;text-align:center}
+.pie-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 28px;margin-top:10px}
+.pie-box h4{margin:0 0 8px;font-size:14px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.pie-wrap{display:flex;justify-content:center;margin-bottom:10px}
+.pie{width:100%;max-width:230px;height:auto;display:block}
+.pie-empty{width:100%;padding:60px 0}
+.pie-s{stroke:var(--card);stroke-width:2;cursor:pointer;transition:opacity .15s,transform .15s;transform-origin:100px 100px}
+.pie-s:hover,.pie-s:focus-visible{opacity:.85;transform:scale(1.025);outline:none}
+.pie-big{font-size:24px;font-weight:800;fill:var(--ink)}
+.pie-sm{font-size:12px;fill:var(--muted)}
+.s-ok{fill:var(--ok);background:var(--ok)}.s-warn{fill:#e8a317;background:#e8a317}.s-bad{fill:var(--danger);background:var(--danger)}
+.s-u1{fill:var(--brand);background:var(--brand)}.s-u2{fill:#2f80ed;background:#2f80ed}.s-u3{fill:#12a5a5;background:#12a5a5}
+.pl-row{display:flex;align-items:center;gap:10px;width:100%;padding:8px 6px;border:0;border-bottom:1px solid var(--line);background:none;text-align:left;cursor:pointer;border-radius:8px}
+.pl-row:last-child{border-bottom:0}
+.pl-row:hover,.pl-row:focus-visible{background:color-mix(in srgb,var(--brand) 6%,var(--card))}
+.pl-row.zero{opacity:.55}
+.pl-dot{flex:none;width:12px;height:12px;border-radius:4px}
+.pl-t{flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere}
+.pl-t small,.pl-v small{display:block;font-weight:500;color:var(--muted);font-size:12.5px}
+.pl-v{flex:none;text-align:right;font-weight:700}
+@media (min-width:769px){.chart-card.wide:first-child{grid-column:auto}}
+@media (max-width:760px){.pie-grid{grid-template-columns:1fr}}
+@media (max-width:640px){.chart-card .mnav{flex:1 1 100%;justify-content:space-between}.pie-box h4{text-align:center}}

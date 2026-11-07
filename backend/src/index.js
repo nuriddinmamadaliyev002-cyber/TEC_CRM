@@ -26,6 +26,7 @@ app.get('/health', (req, res) => res.json({ ok: true, time: new Date().toISOStri
 app.use('/api/auth',         require('./routes/auth'));
 app.use('/api/filiallar',    require('./routes/filiallar'));
 app.use('/api/kurs-adminlar', require('./routes/kursAdminlar'));
+app.use('/api/rahbar',        require('./routes/rahbar')); // rahbar (superadmin): barcha filiallar bo'yicha jamlama — panel routeridan OLDIN
 // DIQQAT: bot routeri panel routeridan OLDIN turishi shart — panel '/api' ga ulangan va panelAuth
 // barcha /api/* so'rovlarni ushlaydi (botning X-Bot-Secret'i u yerda 401 olardi).
 app.use('/api/bot',          require('./routes/bot'));

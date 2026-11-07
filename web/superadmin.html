@@ -9,13 +9,17 @@
 <body>
 <header class="top">
   <div class="top-in">
+    <button class="burger" id="burger" type="button" aria-label="Menyu" aria-expanded="false" aria-controls="tabs"><span></span><span></span><span></span></button>
     <div class="brand"><img src="img/logo.png" alt=""><div>Today Education Centre<small>Superadmin</small></div></div>
     <div class="spacer"></div>
     <span class="who" id="whoami"></span>
     <button class="btn sm" id="logout" type="button">Chiqish</button>
   </div>
+  <nav class="tabs" id="tabs" aria-label="Bo'limlar"></nav>
 </header>
 <main>
+<section id="v-rahbar" class="hidden"></section>
+<section id="v-filial">
   <div class="stats" id="stats" style="margin-bottom:22px"></div>
 
   <div class="head"><h2>🏢 Filiallar <span class="count" id="fcnt"></span></h2><div class="spacer"></div>
@@ -32,7 +36,9 @@
     <thead><tr><th>FI</th><th>Filial</th><th>Telefon</th><th>Login</th><th>Holat</th><th>Oxirgi kirish</th><th></th></tr></thead>
     <tbody id="rows"></tbody></table><div class="empty hidden" id="empty">Hali adminlar yo'q</div></div>
   <p class="muted" style="font-size:13px;margin-top:12px">Admin o'z filialiga shu login va parol bilan kirish sahifasidan kiradi va faqat shu filial ma'lumotlarini ko'radi. Parolni unutsa, «Tahrirlash» orqali yangisini belgilang (bo'sh qoldirilsa parol o'zgarmaydi).</p>
+</section>
 </main>
 <script src="js/common.js"></script>
+<script src="js/rahbar.js"></script>
 <script src="js/superadmin.js"></script>
 </body></html>

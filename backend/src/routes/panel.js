@@ -1,5 +1,6 @@
 // ─── Admin paneli API (superadmin ham foydalana oladi) ─────────────────
 //  /fanlar  /oqituvchilar  /oquvchilar (+yuz)  /guruhlar (+davomat, +yuzlar)  /tolovlar  /lidlar  /vakansiyalar  /nomzodlar  /stats
+//  FAQAT SUPERADMIN (o'quv markaz rahbari): /oqituvchi-hisobot (oyliklar), /vakansiyalar, /nomzodlar, o'qituvchi haq maydonlari.
 const { Router } = require('express');
 const pool = require('../db');
 const panelAuth = require('../middleware/panelAuth');
@@ -7,6 +8,12 @@ const { str, int, num, phone, date, bad, wrap, todayISO } = require('../util');
 
 const router = Router();
 router.use(panelAuth);
+
+// Faqat o'quv markaz rahbari (superadmin) ishlaydigan bo'limlar: o'qituvchi oyliklari, vakansiyalar va nomzodlar.
+// Filial admini bularga API orqali ham kira olmaydi (frontenddagi yashirish yetarli emas).
+const isSu = req => req.user && req.user.role === 'superadmin';
+const RAHBAR_YOQ = "Bu bo'lim faqat o'quv markaz rahbari uchun";
+router.use(['/oqituvchi-hisobot', '/vakansiyalar', '/nomzodlar'], (req, res, next) => (isSu(req) ? next() : bad(res, RAHBAR_YOQ, 403)));
 
 // 2026-02-31 kabi mavjud bo'lmagan sanalarni rad etadi
 function realDate(v) {
@@ -57,9 +64,12 @@ router.delete('/fanlar/:id', wrap(async (req, res) => {
 // Har o'qituvchida haq turi belgilanadi: soatbay | oylik | foiz (oyliklar hisoboti shundan hisoblaydi).
 const HAQ_TURLARI = ['soatbay', 'oylik', 'foiz'];
 const MAX_SUMMA = 999999999999;
-function oqituvchiBody(b) {
+// Haq (soatbay/oylik/foiz) — maxfiy: uni faqat rahbar (superadmin) belgilaydi va ko'radi. Admin o'qituvchini haqsiz yaratadi/tahrirlaydi,
+// haq maydonlari esa unga umuman qaytmaydi va u yuborgan qiymat e'tiborga olinmaydi.
+function oqituvchiBody(b, rahbar) {
   const ism = str(b.ism, 100); if (!ism) return { err: 'Ism majburiy' };
   const fan = int(b.fan_id); if (!fan) return { err: 'Fanni tanlang' }; // fansiz o'qituvchini guruhga biriktirib bo'lmaydi
+  if (!rahbar) return { v: [ism, str(b.familiya, 100), str(b.telefon, 30), b.faol !== false, fan] };
   const turi = HAQ_TURLARI.includes(b.haq_turi) ? b.haq_turi : null;
   if (!turi) return { err: "To'lov turini tanlang (soatbay, oylik yoki foiz)" };
   let stavka = null, oylik = null, foiz = null; // faqat tanlangan turga tegishli qiymat saqlanadi
@@ -73,38 +83,46 @@ function oqituvchiBody(b) {
     foiz = num(b.foiz);
     if (foiz == null || foiz <= 0 || foiz > 100) return { err: "Foiz 0 dan katta va 100 dan oshmaydigan bo'lsin" };
   }
-  // v: 0 ism, 1 familiya, 2 telefon, 3 faol, 4 fan, 5 haq turi, 6 soat stavkasi, 7 oylik, 8 foiz
+  // v: 0 ism, 1 familiya, 2 telefon, 3 faol, 4 fan, 5 haq turi, 6 soat stavkasi, 7 oylik, 8 foiz (admin uchun faqat 0–4)
   return { v: [ism, str(b.familiya, 100), str(b.telefon, 30), b.faol !== false, fan, turi, stavka, oylik, foiz] };
 }
 const oqituvchilar = Router();
 oqituvchilar.get('/', wrap(async (req, res) => {
+  const haq = isSu(req) ? ', t.haq_turi, t.soat_stavka::float AS soat_stavka, t.oylik_maosh::float AS oylik_maosh, t.foiz::float AS foiz' : '';
   const q = await pool.query(
-    `SELECT t.id, t.ism, t.familiya, t.telefon, t.faol, t.fan_id, t.haq_turi, t.soat_stavka::float AS soat_stavka,
-            t.oylik_maosh::float AS oylik_maosh, t.foiz::float AS foiz, f.nomi AS fan_nomi
+    `SELECT t.id, t.ism, t.familiya, t.telefon, t.faol, t.fan_id${haq}, f.nomi AS fan_nomi
        FROM oqituvchilar t LEFT JOIN fanlar f ON f.id=t.fan_id WHERE t.filial_id=$1 ORDER BY t.id DESC`, [req.filialId]);
   res.json({ ok: true, items: q.rows });
 }));
 oqituvchilar.post('/', wrap(async (req, res) => {
-  const { err, v } = oqituvchiBody(req.body); if (err) return bad(res, err);
+  const su = isSu(req);
+  const { err, v } = oqituvchiBody(req.body, su); if (err) return bad(res, err);
   if (!(await inFilial('fanlar', v[4], req.filialId))) return bad(res, 'Fan topilmadi');
   try {
-    const q = await pool.query(
-      `INSERT INTO oqituvchilar(ism,familiya,telefon,faol,fan_id,haq_turi,soat_stavka,oylik_maosh,foiz,filial_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
-      [...v, req.filialId]);
+    const q = su
+      ? await pool.query(
+        `INSERT INTO oqituvchilar(ism,familiya,telefon,faol,fan_id,haq_turi,soat_stavka,oylik_maosh,foiz,filial_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+        [...v, req.filialId])
+      : await pool.query( // haq turi NULL — «belgilanmagan»: rahbar keyin belgilaydi
+        `INSERT INTO oqituvchilar(ism,familiya,telefon,faol,fan_id,filial_id) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`, [...v, req.filialId]);
     res.json({ ok: true, id: q.rows[0].id });
   } catch (e) { if (e.code === '23503') return bad(res, 'Fan topilmadi'); throw e; }
 }));
 oqituvchilar.put('/:id', wrap(async (req, res) => {
-  const { err, v } = oqituvchiBody(req.body); if (err) return bad(res, err);
+  const su = isSu(req);
+  const { err, v } = oqituvchiBody(req.body, su); if (err) return bad(res, err);
   const id = int(req.params.id) || 0;
   if (!(await inFilial('fanlar', v[4], req.filialId))) return bad(res, 'Fan topilmadi');
   // Fan o'zgarsa, o'qituvchi boshqa fan guruhlarida qolib ketmasin
   if ((await pool.query('SELECT 1 FROM guruhlar WHERE oqituvchi_id=$1 AND fan_id<>$2 LIMIT 1', [id, v[4]])).rowCount)
     return bad(res, "Bu o'qituvchi boshqa fan guruhlarida dars beradi. Avval o'sha guruhlarni o'zgartiring", 409);
   try {
-    const q = await pool.query(
-      `UPDATE oqituvchilar SET ism=$1,familiya=$2,telefon=$3,faol=$4,fan_id=$5,haq_turi=$6,soat_stavka=$7,oylik_maosh=$8,foiz=$9 WHERE id=$10 AND filial_id=$11`,
-      [...v, id, req.filialId]);
+    const q = su
+      ? await pool.query(
+        `UPDATE oqituvchilar SET ism=$1,familiya=$2,telefon=$3,faol=$4,fan_id=$5,haq_turi=$6,soat_stavka=$7,oylik_maosh=$8,foiz=$9 WHERE id=$10 AND filial_id=$11`,
+        [...v, id, req.filialId])
+      : await pool.query( // admin haq maydonlariga tegmaydi — ular o'zgarishsiz qoladi
+        `UPDATE oqituvchilar SET ism=$1,familiya=$2,telefon=$3,faol=$4,fan_id=$5 WHERE id=$6 AND filial_id=$7`, [...v, id, req.filialId]);
     q.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
   } catch (e) { if (e.code === '23503') return bad(res, 'Fan topilmadi'); throw e; }
 }));
@@ -923,8 +941,12 @@ router.get('/stats', wrap(async (req, res) => {
       (SELECT COUNT(*)::int FROM nomzodlar WHERE holat='yangi' AND filial_id=$1) AS yangi_nomzodlar,
       (SELECT COUNT(*)::int FROM vakansiyalar WHERE faol AND filial_id=$1)       AS vakansiyalar`, [req.filialId, otganDan, otganGacha, oy + '-01']);
   const h = rejaHisobot(await reestrRows(oy, req.filialId));
+  const st = r.rows[0];
+  if (!isSu(req)) { delete st.yangi_nomzodlar; delete st.vakansiyalar; } // nomzod/vakansiya — rahbarning ishi
   res.json({ ok: true, filial: { id: req.filialId, nomi: req.filialNomi },
-    stats: { ...r.rows[0], oy_hisobot: { reja: h.reja, tolangan: h.tolangan, qarz: round2(h.qisman_qarz + h.yoq_qarz), qarzdor: h.oquvchi.qisman + h.oquvchi.yoq, yigilish: h.yigilish } } });
+    stats: { ...st, oy_hisobot: { reja: h.reja, tolangan: h.tolangan, qarz: round2(h.qisman_qarz + h.yoq_qarz), qarzdor: h.oquvchi.qisman + h.oquvchi.yoq, yigilish: h.yigilish } } });
 }));
 
 module.exports = router;
+// Hisob-kitob funksiyalari rahbar jamlamasi (routes/rahbar.js) uchun — ikki joyda bir xil son chiqishi uchun bitta manba
+router.helpers = { reestrRows, rejaHisobot, oqituvchiHisobot, oyOk };

@@ -28,8 +28,9 @@
   function logout() { session.clear(); location.href = 'index.html'; }
   const relogin = logout;
 
-  async function api(method, path, body) {
-    const h = { 'Content-Type': 'application/json', ...filialHdr() };
+  // extra: qo'shimcha sarlavhalar (rahbar boshqa filial obyektini o'zgartirganda { 'X-Filial-Id': id })
+  async function api(method, path, body, extra) {
+    const h = { 'Content-Type': 'application/json', ...filialHdr(), ...(extra || {}) };
     const t = session.token(); if (t) h.Authorization = 'Bearer ' + t;
     let r, d;
     try {
@@ -44,9 +45,9 @@
   }
 
   // Autentifikatsiyali fayl yuklab olish (Excel va h.k.)
-  async function download(path, filename) {
+  async function download(path, filename, extra) {
     const t = session.token(); let r;
-    try { r = await fetch('/api' + path, { headers: { ...filialHdr(), ...(t ? { Authorization: 'Bearer ' + t } : {}) } }); }
+    try { r = await fetch('/api' + path, { headers: { ...filialHdr(), ...(extra || {}), ...(t ? { Authorization: 'Bearer ' + t } : {}) } }); }
     catch (_) { throw new Error("Server bilan aloqa yo'q"); }
     if (!r.ok) {
       let m = 'Xatolik'; try { m = (await r.json()).error || m; } catch (_) {}

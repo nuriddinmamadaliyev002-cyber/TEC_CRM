@@ -267,7 +267,7 @@
       + (o.d || o.note ? `<div class="sd">${o.d ? `<em class="${o.d[0]}">${o.d[1]}</em>` : ''}${o.note ? `<small>${esc(o.note)}</small>` : ''}</div>` : '') + '</div>';
     const top = [['Faol fanlar', s.fanlar, 'fanlar'], ['Faol guruhlar', s.guruhlar, 'guruhlar'],
       ["O'quvchilar", s.oquvchilar, 'oquvchilar', { d: dCnt(s.oquvchilar, s.oquvchilar_otgan), note: "o'tgan oy oxiriga nisbatan" }],
-      ["O'qituvchilar", s.oqituvchilar, 'oqituvchilar'], ['Yangi lidlar', s.yangi_lidlar, 'lidlar'], ['Yangi nomzodlar', s.yangi_nomzodlar, 'nomzodlar']];
+      ["O'qituvchilar", s.oqituvchilar, 'oqituvchilar'], ['Yangi lidlar', s.yangi_lidlar, 'lidlar'], ...(isSu ? [['Yangi nomzodlar', s.yangi_nomzodlar, 'nomzodlar']] : [])];
     const pay = [['Shu oy tushum', IC.money(s.oy_tushum), 'tolovlar', { d: dPct(s.oy_tushum, s.oy_tushum_otgan), note: `o'tgan oyning shu kunigacha: ${IC.money(s.oy_tushum_otgan)}` }],
       ["Shu oy yig'ilish", h.yigilish == null ? '—' : pctTxt(h.yigilish), 'tolovlar', { note: h.reja > 0 ? `Reja: ${IC.money(h.reja)}` : 'Oylik narx belgilanmagan' }],
       ['Shu oy qarzi', IC.money(h.qarz), 'tolovlar', { h: 'qarzdor', note: h.qarzdor ? `${h.qarzdor} ta o'quvchi qarzdor` : (h.reja > 0 ? "Qarz yo'q" : '') }],
@@ -300,12 +300,14 @@
     title: "O'qituvchilar", path: '/oqituvchilar', addTitle: "Yangi o'qituvchi", editTitle: "O'qituvchini tahrirlash", defaults: { faol: true },
     load: async () => (await IC.api('GET', '/oqituvchilar')).items,
     cols: [['FI', x => `<b>${esc(full(x))}</b>`], ['Fan', x => esc(x.fan_nomi) || '<span class="badge off">Fan tanlanmagan</span>'], ['Telefon', x => esc(x.telefon) || '—'],
-      ["To'lov turi", haqCell], ['Holat', x => stat(x.faol)]],
+      ...(isSu ? [["To'lov turi", haqCell]] : []), ['Holat', x => stat(x.faol)]], // haq — faqat rahbarga
     fields: async x => {
       const f = (await IC.api('GET', '/fanlar')).fanlar;
       // Faol fanlar; tahrirlanayotgan o'qituvchining joriy fani nofaol bo'lsa ham ro'yxatda qoladi
-      return [{ k: 'familiya', label: 'Familiya', req: true }, { k: 'ism', label: 'Ism', req: true }, { k: 'telefon', label: 'Telefon', type: 'tel' },
-        { k: 'fan_id', label: 'Fan', type: 'select', req: true, placeholder: '— Fanni tanlang —', options: opts(f.filter(a => a.faol || (x && a.id === x.fan_id)), 'nomi') },
+      const base = [{ k: 'familiya', label: 'Familiya', req: true }, { k: 'ism', label: 'Ism', req: true }, { k: 'telefon', label: 'Telefon', type: 'tel' },
+        { k: 'fan_id', label: 'Fan', type: 'select', req: true, placeholder: '— Fanni tanlang —', options: opts(f.filter(a => a.faol || (x && a.id === x.fan_id)), 'nomi') }];
+      if (!isSu) return [...base, { k: 'faol', label: 'Faol', type: 'checkbox' }]; // to'lov turi va stavkalarni faqat o'quv markaz rahbari belgilaydi
+      return [...base,
         { k: 'haq_turi', label: "To'lov turi", type: 'select', req: true, placeholder: '— Tanlang —', full: true,
           options: [{ v: 'soatbay', t: 'Soatbay (dars soatiga qarab)' }, { v: 'oylik', t: "Oylik (qat'iy maosh)" }, { v: 'foiz', t: "Foiz (guruhlarga tushgan to'lovdan)" }],
           hint: "Oyliklar hisoboti shu bo'yicha hisoblanadi." },
@@ -967,15 +969,17 @@
   };
 
   // ── Navigatsiya ──
+  // Oyliklar, Vakansiyalar va Nomzodlar — faqat o'quv markaz rahbari (superadmin) uchun; admin ularni ko'rmaydi (server ham 403 beradi)
+  const RAHBAR = new Set(['oyliklar', 'vakansiyalar', 'nomzodlar']);
   const TABS = [['dash', '🏠 Bosh sahifa'], ['lidlar', '📥 Lidlar'], ['fanlar', '📚 Fanlar'], ['guruhlar', '👥 Guruhlar'], ['oquvchilar', "🎓 O'quvchilar"], ['oqituvchilar', "🧑‍🏫 O'qituvchilar"],
-    ['tolovlar', "💳 To'lovlar"], ['oyliklar', '💰 Oyliklar'], ['vakansiyalar', '💼 Vakansiyalar'], ['nomzodlar', '📨 Nomzodlar']];
+    ['tolovlar', "💳 To'lovlar"], ['oyliklar', '💰 Oyliklar'], ['vakansiyalar', '💼 Vakansiyalar'], ['nomzodlar', '📨 Nomzodlar']].filter(([k]) => isSu || !RAHBAR.has(k));
   const nav = document.getElementById('tabs');
   nav.innerHTML = TABS.map(([k, t]) => `<button class="tab" data-k="${k}" type="button">${t}</button>`).join('');
   // Yangi (ko'rilmagan) lid va nomzodlar soni — menyuda ko'rinadi
   async function badges() {
     try {
       const s = (await IC.api('GET', '/stats')).stats;
-      for (const [k, n] of [['lidlar', s.yangi_lidlar], ['nomzodlar', s.yangi_nomzodlar]]) {
+      for (const [k, n] of [['lidlar', s.yangi_lidlar], ['nomzodlar', s.yangi_nomzodlar]]) { // admin uchun yangi_nomzodlar yo'q; tugma ham yo'q
         const b = nav.querySelector(`[data-k="${k}"]`); if (!b) continue;
         b.querySelector('.nb')?.remove();
         if (n > 0) b.insertAdjacentHTML('beforeend', ` <span class="badge warn nb" aria-label="${n} ta yangi">${n}</span>`);
@@ -983,7 +987,7 @@
     } catch (_) {}
   }
   async function go(k) {
-    if (!S[k]) k = 'dash';
+    if (!S[k] || (!isSu && RAHBAR.has(k))) k = 'dash';
     nav.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.k === k));
     try { history.replaceState(null, '', '#' + k); } catch (_) {}
     view.innerHTML = '<div class="empty">Yuklanmoqda…</div>';

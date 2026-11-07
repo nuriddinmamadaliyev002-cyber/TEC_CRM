@@ -27,8 +27,16 @@ Hamma **login + parol** bilan `/index.html` sahifasidan kiradi; server rolni o'z
 
 | Rol | Kim yaratadi | Imkoniyat |
 |---|---|---|
-| Superadmin (bitta, `backend/.env` da) | — | Filiallarni va adminlarni boshqarish (parolni almashtirish, faolsizlantirish); istalgan filial panelini ochish |
-| Admin (bitta filialga biriktirilgan) | Superadmin | O'z filialida: fanlar, guruhlar, o'quvchilar, o'qituvchilar, to'lovlar, davomat, lidlar, vakansiyalar, nomzodlar |
+| Superadmin (o'quv markaz rahbari; bitta, `backend/.env` da) | — | Filiallarni va adminlarni boshqarish (parolni almashtirish, faolsizlantirish); istalgan filial panelini ochish; **faqat u**: 💰 Oyliklar, 💼 Vakansiyalar, 📨 Nomzodlar, o'qituvchi haqi (soatbay/oylik/foiz) |
+| Admin (bitta filialga biriktirilgan) | Superadmin | O'z filialida: fanlar, guruhlar, o'quvchilar, o'qituvchilar (haqsiz), to'lovlar, davomat, lidlar |
+
+**Rahbar sahifasi** (`superadmin.html`, menyu: 📊 Umumiy · 💰 Oyliklar · 💼 Vakansiyalar · 📨 Nomzodlar · 🏢 Filiallar va adminlar) — barcha filiallar bo'yicha, API: `/api/rahbar/*`:
+- **Umumiy:** oy bo'yicha filiallar kesimida tushum (kassa), yig'ilish va qarz (filial panelidagi «To'lovlar» bilan bir xil manbadan), o'qituvchi haqi, «tushum − haq» (taxminiy), yangi lid/nomzod; «Panelni ochish».
+- **Oyliklar:** barcha filial o'qituvchilari bitta ro'yxatda (filial bo'yicha filtr, guruhlar tafsiloti, Excel). Haqi belgilanmagan o'qituvchida «Haqni belgilash» shu filialning O'qituvchilar bo'limini ochadi.
+- **Vakansiyalar / Nomzodlar:** barcha filiallar bitta ro'yxatda; yaratish, tahrirlash, o'chirish, rezyume — tanlangan qator filiali bo'yicha (`X-Filial-Id` bilan mavjud routelar orqali).
+
+**Rahbar bo'limlari** admin uchun API darajasida ham yopiq (`/oqituvchi-hisobot`, `/vakansiyalar`, `/nomzodlar` → 403; `/oqituvchilar` javobida haq maydonlari yo'q, admin ularni yubora olmaydi, `/stats` da nomzod/vakansiya soni yo'q).
+Admin o'qituvchini haqsiz yaratadi — haq turi «Belgilanmagan» bo'lib qoladi, rahbar keyin Oyliklar/O'qituvchilar orqali belgilaydi.
 
 - O'qituvchi va o'quvchilar uchun **panel yo'q** — ular admin panelida yuritiladigan yozuvlar (ism, telefon, guruh).
 - Telegram orqali kirish **olib tashlangan**. Bot tizimga kirish uchun ishlatilmaydi.

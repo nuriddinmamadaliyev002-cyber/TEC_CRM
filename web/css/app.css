@@ -493,3 +493,10 @@ input.has-clr,textarea.has-clr{padding-right:36px}
   .dq-call{min-height:42px;font-size:15px;margin:2px 2px 0}
   .dq-no{text-align:left;padding:2px 36px}
 }
+
+/* ── Rahbar (superadmin) jamlama sahifalari ── */
+.rh-bar{display:flex;align-items:center;gap:6px;min-width:110px}
+.rh-bar i{display:block;height:6px;border-radius:99px;background:var(--brand);min-width:2px}
+.rh-bar span{flex:1;background:color-mix(in srgb,var(--muted) 16%,transparent);border-radius:99px;height:6px;display:block}
+.rh-tot td{font-weight:700;background:color-mix(in srgb,var(--brand) 6%,var(--card))}
+.rh-sel{max-width:220px}

@@ -1,0 +1,7 @@
+2-bosqich: rahbar uchun barcha filiallar bo'yicha jamlama
+Bu zip 1-bosqichdagi o'zgarishlarni ham o'z ichiga oladi (panel.js, e2e.js, README.md) - 1-zipni alohida qo'llash shart emas.
+Fayllarni loyiha ildiziga shu yo'llar bilan ustidan yozing.
+YANGI:   backend/src/routes/rahbar.js, web/js/rahbar.js
+O'ZGARGAN: backend/src/index.js, backend/src/routes/panel.js, backend/scripts/e2e.js,
+           web/superadmin.html, web/css/app.css, web/js/common.js, web/js/superadmin.js, web/js/panel.js, README.md
+Sxema o'zgarmagan. pm2 restart tec-api (frontend fayllar no-cache, deploy.sh versiya qo'yadi).

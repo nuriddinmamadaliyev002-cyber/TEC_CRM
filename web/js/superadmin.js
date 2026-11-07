@@ -96,6 +96,30 @@
     }
   };
 
+  // ── Bo'limlar (rahbar: barcha filiallar bo'yicha jamlama, oyliklar, vakansiyalar, nomzodlar; filiallar va adminlar) ──
+  const TABS = [['jamlama', '📊 Umumiy'], ['oyliklar', '💰 Oyliklar'], ['vakansiyalar', '💼 Vakansiyalar'], ['nomzodlar', '📨 Nomzodlar'], ['filiallar', '🏢 Filiallar va adminlar']];
+  const nav = $('tabs'), rv = $('v-rahbar'), fv = $('v-filial');
+  nav.innerHTML = TABS.map(([k, t]) => `<button class="tab" data-k="${k}" type="button">${t}</button>`).join('');
+  function badge() { // yangi nomzodlar soni menyuda (filiallar ro'yxatidan)
+    const n = filials.reduce((a, f) => a + (f.yangi_nomzodlar || 0), 0), b = nav.querySelector('[data-k="nomzodlar"]');
+    if (!b) return; b.querySelector('.nb') && b.querySelector('.nb').remove();
+    if (n > 0) b.insertAdjacentHTML('beforeend', ` <span class="badge warn nb" aria-label="${n} ta yangi">${n}</span>`);
+  }
+  let cur = '';
+  async function go(k) {
+    if (!TABS.some(t => t[0] === k)) k = 'jamlama';
+    cur = k;
+    nav.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.k === k));
+    try { history.replaceState(null, '', '#' + k); } catch (_) {}
+    const isF = k === 'filiallar';
+    fv.classList.toggle('hidden', !isF); rv.classList.toggle('hidden', isF);
+    if (isF) return;
+    rv.innerHTML = '<div class="empty">Yuklanmoqda…</div>';
+    try { await RAHBAR[k](rv); } catch (x) { if (cur === k) rv.innerHTML = `<div class="empty">${esc(x.message)}</div>`; }
+  }
+  nav.onclick = e => { const b = e.target.closest('.tab'); if (b) go(b.dataset.k); };
+
   IC.filial.clear(); // superadmin sahifasida filial tanlanmagan; «Panelni ochish» tanlaydi
-  Promise.all([loadFilials(), loadAdmins()]).catch(x => IC.toast(x.message, true));
+  Promise.all([loadFilials(), loadAdmins()]).then(badge).catch(x => IC.toast(x.message, true));
+  go(location.hash.slice(1) || 'jamlama');
 })();

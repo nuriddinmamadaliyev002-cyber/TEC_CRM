@@ -218,11 +218,11 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
   r = await call('DELETE', `/lidlar/${LID2}`, null, KA); t('qayta o\'chirish → 404', r.s === 404, r);
 
   // — VAKANSIYALAR va NOMZODLAR
-  r = await call('POST', '/vakansiyalar', { nomi: '' }, KA); t('vakansiya nomsiz → 400', r.s === 400, r);
-  r = await call('POST', '/vakansiyalar', { nomi: 'X', fan_id: 99999 }, KA); t('vakansiya: mavjud bo\'lmagan fan → 400', r.s === 400, r);
-  r = await call('POST', '/vakansiyalar', { nomi: 'Ingliz tili o\'qituvchisi', fan_id: KID, maosh: '4–6 mln', tavsif: 'Tavsif <b>x</b>', talablar: 'IELTS 7', faol: true }, KA); t('vakansiya yaratish', r.s === 200, r);
+  r = await call('POST', '/vakansiyalar', { nomi: '' }, SU); t('vakansiya nomsiz → 400', r.s === 400, r);
+  r = await call('POST', '/vakansiyalar', { nomi: 'X', fan_id: 99999 }, SU); t('vakansiya: mavjud bo\'lmagan fan → 400', r.s === 400, r);
+  r = await call('POST', '/vakansiyalar', { nomi: 'Ingliz tili o\'qituvchisi', fan_id: KID, maosh: '4–6 mln', tavsif: 'Tavsif <b>x</b>', talablar: 'IELTS 7', faol: true }, SU); t('vakansiya yaratish', r.s === 200, r);
   const VID = r.d.id;
-  r = await call('POST', '/vakansiyalar', { nomi: 'Yopiq vakansiya', faol: false }, KA); const VCLOSED = r.d.id;
+  r = await call('POST', '/vakansiyalar', { nomi: 'Yopiq vakansiya', faol: false }, SU); const VCLOSED = r.d.id;
   r = await call('GET', `/bot/vakansiyalar?filial_id=${F1}`, null, null, BOT); t('bot: faqat faol vakansiyalar', r.s === 200 && r.d.items.some(x => x.id === VID && x.fan_nomi === 'Python' && x.maosh === '4–6 mln') && !r.d.items.some(x => x.id === VCLOSED), r);
   r = await call('POST', '/bot/nomzod', { vakansiya_id: VCLOSED, ism: 'Nomzod Bir', telefon: '+998901000001' }, null, BOT); t('yopiq vakansiyaga ariza → 404', r.s === 404, r);
   r = await call('POST', '/bot/nomzod', { vakansiya_id: VID, ism: 'N', telefon: '+998901000001' }, null, BOT); t('nomzod: qisqa ism → 400', r.s === 400, r);
@@ -233,22 +233,22 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
   r = await call('POST', '/bot/nomzod', { vakansiya_id: VID, ism: 'Nomzod Bir', telefon: '+998901000001', telegram_id: 888001 }, null, BOT); t('nomzod: takroriy ariza → takror:true', r.s === 200 && r.d.takror === true, r);
   r = await call('POST', '/bot/nomzod', { vakansiya_id: VID, ism: 'Nomzod Ikki', telefon: '+998901000002', tajriba: 'Yangi boshlovchi' }, null, BOT); t('nomzod arizasi (rezyumesiz)', r.s === 200, r);
   const NID2 = r.d.id;
-  r = await call('GET', '/nomzodlar', null, KA);
+  r = await call('GET', '/nomzodlar', null, SU);
   { const n = r.d.items.find(x => x.id === NID); t('admin: nomzod ro\'yxatda (yangi, rezyume_bor, file_id oshkor emas)', n && n.holat === 'yangi' && n.rezyume_bor === true && n.vakansiya_nomi === 'Ingliz tili o\'qituvchisi' && !JSON.stringify(r.d).includes('BQACAgIAAx0Cfake'), n);
     t('rezyumesiz nomzod: rezyume_bor=false', r.d.items.find(x => x.id === NID2).rezyume_bor === false, r.d.items); }
-  r = await call('GET', '/stats', null, KA); t('statistika: yangi nomzodlar, vakansiyalar', r.d.stats.yangi_nomzodlar >= 2 && r.d.stats.vakansiyalar >= 1, r.d.stats);
-  r = await call('PUT', `/nomzodlar/${NID}`, { holat: 'xxx' }, KA); t('nomzod: noto\'g\'ri holat → 400', r.s === 400, r);
-  r = await call('PUT', `/nomzodlar/${NID}`, { holat: 'suhbat', izoh: 'Juma kuni suhbat' }, KA); t('nomzod holati/izohi', r.s === 200, r);
-  r = await call('GET', `/nomzodlar/${NID2}/rezyume`, null, KA); t('rezyumesiz nomzod → 404', r.s === 404, r);
+  r = await call('GET', '/stats', null, SU); t('statistika (rahbar): yangi nomzodlar, vakansiyalar', r.d.stats.yangi_nomzodlar >= 2 && r.d.stats.vakansiyalar >= 1, r.d.stats);
+  r = await call('PUT', `/nomzodlar/${NID}`, { holat: 'xxx' }, SU); t('nomzod: noto\'g\'ri holat → 400', r.s === 400, r);
+  r = await call('PUT', `/nomzodlar/${NID}`, { holat: 'suhbat', izoh: 'Juma kuni suhbat' }, SU); t('nomzod holati/izohi', r.s === 200, r);
+  r = await call('GET', `/nomzodlar/${NID2}/rezyume`, null, SU); t('rezyumesiz nomzod → 404', r.s === 404, r);
   r = await call('GET', `/nomzodlar/${NID}/rezyume`, null, SU); t('rezyume: Telegramdan olib bo\'lmasa → 5xx emas, 502 (yoki bot sozlanmagan 500)', r.s === 502 || r.s === 500, r);
-  r = await call('GET', '/vakansiyalar', null, KA); t('vakansiyalar: nomzodlar_soni', r.d.items.find(x => x.id === VID).nomzodlar_soni === 2, r);
-  r = await call('PUT', `/vakansiyalar/${VID}`, { nomi: 'Ingliz tili (yopildi)', fan_id: '', faol: false }, KA); t('vakansiyani tahrirlash/yopish', r.s === 200, r);
+  r = await call('GET', '/vakansiyalar', null, SU); t('vakansiyalar: nomzodlar_soni', r.d.items.find(x => x.id === VID).nomzodlar_soni === 2, r);
+  r = await call('PUT', `/vakansiyalar/${VID}`, { nomi: 'Ingliz tili (yopildi)', fan_id: '', faol: false }, SU); t('vakansiyani tahrirlash/yopish', r.s === 200, r);
   r = await call('GET', `/bot/vakansiyalar?filial_id=${F1}`, null, null, BOT); t('yopilgan vakansiya botdan yo\'qoladi', !r.d.items.some(x => x.id === VID), r);
-  r = await call('DELETE', `/vakansiyalar/${VID}`, null, KA); t('vakansiyani o\'chirish', r.s === 200, r);
-  r = await call('GET', '/nomzodlar', null, KA); t('vakansiya o\'chsa nomzod qoladi (nomi saqlanadi)', r.d.items.find(x => x.id === NID).vakansiya_nomi === 'Ingliz tili o\'qituvchisi' && r.d.items.find(x => x.id === NID).vakansiya_id === null, r);
-  await call('DELETE', `/vakansiyalar/${VCLOSED}`, null, KA);
-  r = await call('DELETE', `/nomzodlar/${NID}`, null, KA); t('nomzodni o\'chirish', r.s === 200, r);
-  await call('DELETE', `/nomzodlar/${NID2}`, null, KA);
+  r = await call('DELETE', `/vakansiyalar/${VID}`, null, SU); t('vakansiyani o\'chirish', r.s === 200, r);
+  r = await call('GET', '/nomzodlar', null, SU); t('vakansiya o\'chsa nomzod qoladi (nomi saqlanadi)', r.d.items.find(x => x.id === NID).vakansiya_nomi === 'Ingliz tili o\'qituvchisi' && r.d.items.find(x => x.id === NID).vakansiya_id === null, r);
+  await call('DELETE', `/vakansiyalar/${VCLOSED}`, null, SU);
+  r = await call('DELETE', `/nomzodlar/${NID}`, null, SU); t('nomzodni o\'chirish', r.s === 200, r);
+  await call('DELETE', `/nomzodlar/${NID2}`, null, SU);
 
   // — FILIAL IZOLYATSIYASI: bir filial admini boshqa filial ma'lumotiga umuman tegolmaydi
   const MONTH = new Date().toISOString().slice(0, 7);
@@ -260,14 +260,46 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
   r = await call('GET', '/kurs-adminlar', null, SU); t('adminlar ro\'yxatida filial nomi', r.d.adminlar.find(a => a.id === BID).filial_nomi.startsWith('Yunusobod'), r);
   // F1 da lid, vakansiya, nomzod
   r = await call('POST', '/bot/lid', { guruh_id: GMAT, ism: 'Izolyatsiya Lid', telefon: '+998901110011', telegram_id: 777010 }, null, BOT); const LIDX = r.d.id;
-  r = await call('POST', '/vakansiyalar', { nomi: 'F1 vakansiyasi', faol: true }, KA); const VX = r.d.id;
+  r = await call('POST', '/vakansiyalar', { nomi: 'F1 vakansiyasi', faol: true }, SU); const VX = r.d.id;
   r = await call('POST', '/bot/nomzod', { vakansiya_id: VX, ism: 'Izolyatsiya Nomzod', telefon: '+998901110022', rezyume_file_id: 'FAKEFILE', rezyume_nomi: 'cv.pdf' }, null, BOT); const NX = r.d.id;
   r = await call('GET', '/tolovlar', null, KA); const PAYID = r.d.items[0].id;
   // ro'yxatlar
-  for (const [path, key] of [['/fanlar', 'fanlar'], ['/guruhlar', 'guruhlar'], ['/oquvchilar', 'items'], ['/oqituvchilar', 'items'], ['/lidlar', 'items'], ['/tolovlar', 'items'], ['/vakansiyalar', 'items'], ['/nomzodlar', 'items']]) {
+  for (const [path, key] of [['/fanlar', 'fanlar'], ['/guruhlar', 'guruhlar'], ['/oquvchilar', 'items'], ['/oqituvchilar', 'items'], ['/lidlar', 'items'], ['/tolovlar', 'items']]) {
     r = await call('GET', path, null, KB); t(`F2 admini ${path}: bo'sh (F1 ma'lumoti ko'rinmaydi)`, r.s === 200 && r.d[key].length === 0, r.d);
     r = await call('GET', path, null, KA); t(`F1 admini ${path}: o'z ma'lumotini ko'radi`, r.s === 200 && r.d[key].length > 0, r.d);
   }
+  // — RAHBAR BO'LIMLARI: vakansiyalar, nomzodlar, oyliklar, o'qituvchi haqi — filial admini uchun YOPIQ (API darajasida), superadmin uchun ochiq
+  for (const [path, key] of [['/vakansiyalar', 'items'], ['/nomzodlar', 'items']]) {
+    r = await call('GET', path, null, KB, { }); t(`admin ${path}: 403 (faqat rahbar)`, r.s === 403, r);
+    r = await call('GET', path, null, SU, { 'X-Filial-Id': String(F2) }); t(`rahbar ${path}: F2 ni ko'radi (bo'sh)`, r.s === 200 && r.d[key].length === 0, r.d);
+    r = await call('GET', path, null, SU); t(`rahbar ${path}: F1 ma'lumotini ko'radi`, r.s === 200 && r.d[key].length > 0, r.d);
+  }
+  r = await call('POST', '/vakansiyalar', { nomi: 'Admin yaratmoqchi' }, KA); t('admin vakansiya yarata olmaydi → 403', r.s === 403, r);
+  r = await call('PUT', `/vakansiyalar/${VX}`, { nomi: 'Hack' }, KA); t('admin vakansiyani tahrirlay olmaydi → 403', r.s === 403, r);
+  r = await call('DELETE', `/vakansiyalar/${VX}`, null, KA); t('admin vakansiyani o\'chira olmaydi → 403', r.s === 403, r);
+  r = await call('PUT', `/nomzodlar/${NX}`, { holat: 'rad' }, KA); t('admin nomzod holatini o\'zgartira olmaydi → 403', r.s === 403, r);
+  r = await call('DELETE', `/nomzodlar/${NX}`, null, KA); t('admin nomzodni o\'chira olmaydi → 403', r.s === 403, r);
+  r = await call('GET', `/nomzodlar/${NX}/rezyume`, null, KA); t('admin rezyumeni ola olmaydi → 403', r.s === 403, r);
+  r = await call('GET', `/oqituvchi-hisobot?oy=${new Date().toISOString().slice(0, 7)}`, null, KA); t('admin oyliklar hisobotini ko\'ra olmaydi → 403', r.s === 403, r);
+  { const x = await fetch(`${B}/oqituvchi-hisobot/excel?oy=${new Date().toISOString().slice(0, 7)}`, { headers: { Authorization: 'Bearer ' + KA } }); t('admin oyliklar Excelini ola olmaydi → 403', x.status === 403, x.status); }
+  r = await call('GET', '/stats', null, KA); t('admin statistikasida nomzod/vakansiya yo\'q', r.s === 200 && !('yangi_nomzodlar' in r.d.stats) && !('vakansiyalar' in r.d.stats), r.d.stats);
+  r = await call('GET', '/stats', null, SU); t('rahbar statistikasida nomzod/vakansiya bor', r.s === 200 && r.d.stats.yangi_nomzodlar >= 1 && r.d.stats.vakansiyalar >= 1, r.d.stats);
+  // O'qituvchi haqi: admin ko'rmaydi va belgilay olmaydi; rahbar belgilaydi
+  r = await call('GET', '/oqituvchilar', null, KA);
+  t('admin o\'qituvchilar ro\'yxatida haq maydonlari yo\'q', r.s === 200 && r.d.items.length > 0 && r.d.items.every(x => !('haq_turi' in x) && !('soat_stavka' in x) && !('oylik_maosh' in x) && !('foiz' in x)), r.d.items[0]);
+  r = await call('GET', '/oqituvchilar', null, SU);
+  t('rahbar o\'qituvchilar ro\'yxatida haq maydonlari bor', r.s === 200 && r.d.items.some(x => x.haq_turi === 'soatbay' || x.haq_turi === null), r.d.items[0]);
+  r = await call('POST', '/oqituvchilar', { ism: 'HaqsizAdmin', familiya: 'Test', fan_id: KID, haq_turi: 'oylik', oylik_maosh: 9999999 }, KA); t('admin o\'qituvchini haq turisiz yaratadi (haq e\'tiborga olinmaydi)', r.s === 200 && r.d.id, r);
+  const THQ = r.d.id;
+  r = await call('GET', '/oqituvchilar', null, SU); { const a = r.d.items.find(x => x.id === THQ);
+    t('admin yaratgan o\'qituvchida haq belgilanmagan (NULL) — rahbar ko\'radi', a && a.haq_turi === null && a.oylik_maosh === null && a.soat_stavka === null && a.foiz === null, a); }
+  r = await call('PUT', `/oqituvchilar/${THQ}`, { ism: 'HaqsizAdmin', familiya: 'Test2', fan_id: KID }, KA); t('admin o\'qituvchini tahrirlaydi (haqsiz)', r.s === 200, r);
+  r = await call('PUT', `/oqituvchilar/${THQ}`, { ism: 'HaqsizAdmin', fan_id: KID, haq_turi: 'foiz', foiz: 90 }, SU); t('rahbar haq belgilaydi', r.s === 200, r);
+  r = await call('PUT', `/oqituvchilar/${THQ}`, { ism: 'HaqsizAdmin', familiya: 'Test3', fan_id: KID, haq_turi: 'oylik', oylik_maosh: 1 }, KA); t('admin tahriri haqni o\'zgartirmaydi (so\'rovda haq yuborsa ham)', r.s === 200, r);
+  r = await call('GET', '/oqituvchilar', null, SU); { const a = r.d.items.find(x => x.id === THQ);
+    t('haq admin tahridan keyin ham saqlanib qoldi (foiz 90)', a && a.haq_turi === 'foiz' && a.foiz === 90 && a.oylik_maosh === null && a.familiya === 'Test3', a); }
+  r = await call('PUT', `/oqituvchilar/${THQ}`, { ism: 'HaqsizAdmin', fan_id: KID }, SU); t('rahbar uchun haq turi hamon majburiy → 400', r.s === 400, r);
+  await call('DELETE', `/oqituvchilar/${THQ}`, null, KA);
   r = await call('GET', `/tolov-reestr?oy=${MONTH}`, null, KB); t('reestr: F2 admini F1 qatorlarini ko\'rmaydi', r.s === 200 && r.d.items.length === 0, r.d);
   r = await call('GET', `/tolov-reestr?oy=${MONTH}`, null, KA); t('reestr: F1 admini o\'z qatorlarini ko\'radi', r.d.items.length > 0, r.d);
   r = await call('GET', '/stats', null, KB); t('statistika: F2 da o\'quvchi yo\'q', r.d.stats.oquvchilar === 0 && r.d.stats.guruhlar === 0 && r.d.stats.jami_tushum === 0, r.d);
@@ -310,23 +342,54 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
   r = await call('PUT', `/lidlar/${LIDX}`, { holat: 'rad', izoh: 'x' }, KB); t('begona lidni tahrirlash → 404', r.s === 404, r);
   r = await call('POST', `/lidlar/${LIDX}/oquvchi`, {}, KB); t('begona lidni o\'quvchiga aylantirish → 404', r.s === 404, r);
   r = await call('DELETE', `/lidlar/${LIDX}`, null, KB); t('begona lidni o\'chirish → 404', r.s === 404, r);
-  r = await call('PUT', `/vakansiyalar/${VX}`, { nomi: 'Hack' }, KB); t('begona vakansiyani tahrirlash → 404', r.s === 404, r);
-  r = await call('DELETE', `/vakansiyalar/${VX}`, null, KB); t('begona vakansiyani o\'chirish → 404', r.s === 404, r);
-  r = await call('PUT', `/nomzodlar/${NX}`, { holat: 'rad' }, KB); t('begona nomzodni tahrirlash → 404', r.s === 404, r);
-  r = await call('GET', `/nomzodlar/${NX}/rezyume`, null, KB); t('begona nomzod rezyumesi → 404', r.s === 404, r);
-  r = await call('DELETE', `/nomzodlar/${NX}`, null, KB); t('begona nomzodni o\'chirish → 404', r.s === 404, r);
+  r = await call('PUT', `/vakansiyalar/${VX}`, { nomi: 'Hack' }, SU, { 'X-Filial-Id': String(F2) }); t('begona vakansiyani tahrirlash → 404', r.s === 404, r);
+  r = await call('DELETE', `/vakansiyalar/${VX}`, null, SU, { 'X-Filial-Id': String(F2) }); t('begona vakansiyani o\'chirish → 404', r.s === 404, r);
+  r = await call('PUT', `/nomzodlar/${NX}`, { holat: 'rad' }, SU, { 'X-Filial-Id': String(F2) }); t('begona nomzodni tahrirlash → 404', r.s === 404, r);
+  r = await call('GET', `/nomzodlar/${NX}/rezyume`, null, SU, { 'X-Filial-Id': String(F2) }); t('begona nomzod rezyumesi → 404', r.s === 404, r);
+  r = await call('DELETE', `/nomzodlar/${NX}`, null, SU, { 'X-Filial-Id': String(F2) }); t('begona nomzodni o\'chirish → 404', r.s === 404, r);
   // hech narsa o'zgarmaganini F1 tomonda tekshiramiz
   r = await call('GET', '/guruhlar', null, KA); t('F1 guruhlari buzilmagan', r.d.guruhlar.some(g => g.id === GID && g.nomi === 'PY-1'), r.d.guruhlar);
   r = await call('GET', '/lidlar', null, KA); t('F1 lidi buzilmagan', r.d.items.find(x => x.id === LIDX).holat === 'yangi', r.d);
-  r = await call('GET', '/nomzodlar', null, KA); t('F1 nomzodi buzilmagan', r.d.items.some(x => x.id === NX && x.holat === 'yangi'), r.d);
+  r = await call('GET', '/nomzodlar', null, SU); t('F1 nomzodi buzilmagan', r.d.items.some(x => x.id === NX && x.holat === 'yangi'), r.d);
   // F2 ichida boshqa filial obyektlariga bog'lab bo'lmaydi
   r = await call('POST', '/fanlar', { nomi: 'Python' }, KB); const FF2 = r.d.id; t('fan nomi filiallar o\'rtasida takrorlanishi mumkin', r.s === 200, r);
   r = await call('POST', '/guruhlar', { davomiylik: 90, nomi: 'X', fan_id: KID, oylik_narx: 1 }, KB); t('F2 guruhiga F1 fanini qo\'yib bo\'lmaydi → 400', r.s === 400, r);
   r = await call('POST', '/oqituvchilar', { haq_turi: 'soatbay', soat_stavka: 50000, ism: 'X', fan_id: KID }, KB); t('F2 o\'qituvchisiga F1 fanini qo\'yib bo\'lmaydi → 400', r.s === 400, r);
-  r = await call('POST', '/vakansiyalar', { nomi: 'X', fan_id: KID }, KB); t('F2 vakansiyasiga F1 fanini qo\'yib bo\'lmaydi → 400', r.s === 400, r);
+  r = await call('POST', '/vakansiyalar', { nomi: 'X', fan_id: KID }, SU, { 'X-Filial-Id': String(F2) }); t('F2 vakansiyasiga F1 fanini qo\'yib bo\'lmaydi → 400', r.s === 400, r);
   r = await call('POST', '/oqituvchilar', { haq_turi: 'soatbay', soat_stavka: 50000, ism: 'Dilshod', familiya: 'F2', fan_id: FF2 }, KB); const TF2 = r.d.id;
   r = await call('POST', '/guruhlar', { davomiylik: 90, nomi: 'F2-1', fan_id: FF2, oqituvchi_id: TID, oylik_narx: 1 }, KB); t('F2 guruhiga F1 o\'qituvchisini qo\'yib bo\'lmaydi → 400', r.s === 400, r);
   r = await call('POST', '/guruhlar', { davomiylik: 90, nomi: 'F2-1', fan_id: FF2, oqituvchi_id: TF2, oylik_narx: 450000, kunlar: [1, 3], soat: '18:00' }, KB); const GF2 = r.d.id; t('F2 guruhi yaratildi', r.s === 200, r);
+  // — RAHBAR JAMLAMASI: /api/rahbar/* (barcha filiallar) — faqat superadmin
+  for (const p of ['/rahbar/jamlama?oy=' + MONTH, '/rahbar/oyliklar?oy=' + MONTH, '/rahbar/vakansiyalar', '/rahbar/nomzodlar', '/rahbar/fanlar']) {
+    r = await call('GET', p, null, KA); t(`admin ${p.split('?')[0]}: 403`, r.s === 403, r);
+    r = await call('GET', p); t(`tokensiz ${p.split('?')[0]}: 401`, r.s === 401, r);
+  }
+  { const x = await fetch(`${B}/rahbar/oyliklar/excel?oy=${MONTH}`, { headers: { Authorization: 'Bearer ' + KA } }); t('admin rahbar Excelini ola olmaydi → 403', x.status === 403, x.status); }
+  r = await call('GET', '/rahbar/jamlama?oy=2999-01', null, SU); t('jamlama: kelajak oyi → 400', r.s === 400, r);
+  r = await call('GET', '/rahbar/jamlama?oy=xx', null, SU); t('jamlama: noto\'g\'ri oy → 400', r.s === 400, r);
+  r = await call('GET', '/rahbar/jamlama?oy=' + MONTH, null, SU);
+  { const d = r.d, a = d.items && d.items.find(x => x.id === F1), b = d.items && d.items.find(x => x.id === F2);
+    t('jamlama: ikkala filial ham bor', r.s === 200 && !!a && !!b, d);
+    const sa = (await call('GET', '/stats', null, SU, { 'X-Filial-Id': String(F1) })).d.stats, sb = (await call('GET', '/stats', null, SU, { 'X-Filial-Id': String(F2) })).d.stats;
+    t('jamlama: filial raqamlari panel /stats bilan bir xil (F1)', a.oquvchilar === sa.oquvchilar && a.guruhlar === sa.guruhlar && a.oqituvchilar === sa.oqituvchilar && a.tushum === sa.oy_tushum && a.yangi_lidlar === sa.yangi_lidlar && a.yangi_nomzodlar === sa.yangi_nomzodlar, { a, sa });
+    t('jamlama: filial raqamlari panel /stats bilan bir xil (F2)', b.oquvchilar === sb.oquvchilar && b.tushum === sb.oy_tushum, { b, sb });
+    t('jamlama: reja/qarz panel hisobotiga mos (F1)', a.reja === sa.oy_hisobot.reja && a.qarz === sa.oy_hisobot.qarz && a.yigilish === sa.oy_hisobot.yigilish, { a, h: sa.oy_hisobot });
+    const hz = (await call('GET', `/oqituvchi-hisobot?oy=${MONTH}`, null, SU, { 'X-Filial-Id': String(F1) })).d;
+    t('jamlama: o\'qituvchi haqi oyliklar hisobotiga mos', a.oylik === hz.jami && a.natija === Math.round((a.tushum - a.oylik) * 100) / 100, { a, jami: hz.jami });
+    t('jamlama: jami = filiallar yig\'indisi', d.jami.tushum === Math.round(d.items.reduce((x, f) => x + f.tushum, 0) * 100) / 100 && d.jami.oquvchilar === d.items.reduce((x, f) => x + f.oquvchilar, 0) && d.jami.qarz === Math.round(d.items.reduce((x, f) => x + f.qarz, 0) * 100) / 100, d.jami);
+    t('jamlama: F2 da F1 tushumi yo\'q', b.tushum !== a.tushum || a.tushum === 0, { a: a.tushum, b: b.tushum }); }
+  r = await call('GET', '/rahbar/oyliklar?oy=' + MONTH, null, SU);
+  t('rahbar oyliklar: filial_id/filial_nomi bor, jami = yig\'indi', r.s === 200 && r.d.items.length > 0 && r.d.items.every(x => x.filial_id && x.filial_nomi) && r.d.jami === r.d.items.reduce((x, o) => x + o.summa, 0)
+    && r.d.filiallar.some(f => f.id === F1) && r.d.filiallar.some(f => f.id === F2), r.d.jami);
+  t('rahbar oyliklar: F1 va F2 o\'qituvchilari bitta ro\'yxatda', r.d.items.some(x => x.filial_id === F1) && r.d.items.some(x => x.filial_id === F2), r.d.items.map(x => x.filial_id));
+  { const x = await fetch(`${B}/rahbar/oyliklar/excel?oy=${MONTH}`, { headers: { Authorization: 'Bearer ' + SU } }); const buf = Buffer.from(await x.arrayBuffer());
+    t('rahbar oyliklar: Excel (.xlsx) yuklanadi', x.status === 200 && /spreadsheetml/.test(x.headers.get('content-type')) && buf.slice(0, 2).toString() === 'PK' && buf.length > 1000, { s: x.status, n: buf.length }); }
+  r = await call('GET', '/rahbar/vakansiyalar', null, SU); t('rahbar vakansiyalar: filial nomi bilan', r.s === 200 && r.d.items.some(x => x.id === VX && x.filial_id === F1 && x.filial_nomi), r.d);
+  r = await call('GET', '/rahbar/nomzodlar', null, SU); t('rahbar nomzodlar: filial nomi bilan, file_id oshkor emas', r.s === 200 && r.d.items.some(x => x.id === NX && x.filial_id === F1 && x.rezyume_bor === true) && r.d.items.every(x => !('rezyume_file_id' in x)), r.d);
+  r = await call('GET', '/rahbar/fanlar', null, SU); t('rahbar fanlar: barcha filiallar', r.s === 200 && r.d.items.some(x => x.id === KID && x.filial_id === F1) && r.d.items.some(x => x.id === FF2 && x.filial_id === F2), r.d);
+  r = await call('PUT', `/vakansiyalar/${VX}`, { nomi: 'F1 vakansiyasi (rahbar tahriri)', faol: true }, SU, { 'X-Filial-Id': String(F1) }); t('rahbar boshqa filial obyektini sarlavha bilan tahrirlaydi', r.s === 200, r);
+  r = await call('PUT', `/vakansiyalar/${VX}`, { nomi: 'Hack' }, SU, { 'X-Filial-Id': String(F2) }); t('noto\'g\'ri filial sarlavhasi bilan tahrir → 404 (izolyatsiya saqlanadi)', r.s === 404, r);
+  r = await call('GET', '/rahbar/vakansiyalar', null, SU); t('vakansiya nomi rahbar tahridan keyin yangilangan', r.d.items.find(x => x.id === VX).nomi === 'F1 vakansiyasi (rahbar tahriri)', r.d);
   r = await call('POST', `/guruhlar/${GF2}/oquvchilar`, { oquvchi_id: ids[0] }, KB); t('F2 guruhiga F1 o\'quvchisini qo\'shib bo\'lmaydi → 404', r.s === 404, r);
   r = await call('GET', '/fanlar', null, KA, { 'X-Filial-Id': String(F2) }); t('admin X-Filial-Id sarlavhasi bilan filialni almashtira olmaydi', r.s === 200 && r.d.fanlar.some(f => f.id === KID) && !r.d.fanlar.some(f => f.id === FF2), r.d);
   // superadmin filiali
@@ -467,7 +530,7 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
   {
     const pool = require('../src/db');
     const T0 = { ism: 'Haq', familiya: 'Test', fan_id: KID };
-    const badT = async (extra, name) => { const x = await call('POST', '/oqituvchilar', { ...T0, ...extra }, KA); t(name, x.s === 400, x); };
+    const badT = async (extra, name) => { const x = await call('POST', '/oqituvchilar', { ...T0, ...extra }, SU); t(name, x.s === 400, x); };
     await badT({}, 'to\'lov turisiz o\'qituvchi → 400');
     await badT({ haq_turi: 'kunlik' }, 'noto\'g\'ri to\'lov turi → 400');
     await badT({ haq_turi: 'soatbay' }, 'soatbay: stavkasiz → 400');
@@ -476,11 +539,11 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
     await badT({ haq_turi: 'foiz' }, 'foiz: qiymatsiz → 400');
     await badT({ haq_turi: 'foiz', foiz: 0 }, 'foiz: 0 → 400');
     await badT({ haq_turi: 'foiz', foiz: 101 }, 'foiz: 100 dan katta → 400');
-    const mk = async extra => (await call('POST', '/oqituvchilar', { ...T0, ...extra }, KA)).d.id;
+    const mk = async extra => (await call('POST', '/oqituvchilar', { ...T0, ...extra }, SU)).d.id;
     const TS = await mk({ ism: 'Soat', haq_turi: 'soatbay', soat_stavka: 50000, oylik_maosh: 999, foiz: 50 });
     const TO = await mk({ ism: 'Oylik', haq_turi: 'oylik', oylik_maosh: 3000000 });
     const TP = await mk({ ism: 'Foiz', haq_turi: 'foiz', foiz: 40 });
-    r = await call('GET', '/oqituvchilar', null, KA);
+    r = await call('GET', '/oqituvchilar', null, SU);
     { const a = r.d.items.find(x => x.id === TS), b = r.d.items.find(x => x.id === TO), c = r.d.items.find(x => x.id === TP);
       t('soatbay: faqat stavka saqlanadi (oylik va foiz tozalanadi)', a.haq_turi === 'soatbay' && a.soat_stavka === 50000 && a.oylik_maosh === null && a.foiz === null, a);
       t('oylik: faqat maosh saqlanadi', b.haq_turi === 'oylik' && b.oylik_maosh === 3000000 && b.soat_stavka === null && b.foiz === null, b);
@@ -509,7 +572,7 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
     const tl = (o, g, summa, sana) => pool.query('INSERT INTO tolovlar(oquvchi_id,guruh_id,summa,sana) VALUES($1,$2,$3,$4)', [o, g, summa, sana]);
     await tl(SA, gP, 300000, `${PM}-06`); await tl(SB, gP, 100000, `${PM}-20`);
     await tl(SA, gP, 50000, new Date().toISOString().slice(0, 10));         // joriy oy to'lovi o'tgan oy hisobiga kirmaydi (oy chegarasi)
-    r = await call('GET', `/oqituvchi-hisobot?oy=${PM}`, null, KA);
+    r = await call('GET', `/oqituvchi-hisobot?oy=${PM}`, null, SU);
     t('hisobot: 200', r.s === 200 && Array.isArray(r.d.items), r);
     const H = id => r.d.items.find(x => x.id === id);
     { const a = H(TS); t('soatbay: 2 dars × 90 daq = 3 soat × 50 000 = 150 000', a && a.darslar === 3 && a.soat === 3 && a.summa === 150000, a); }
@@ -517,17 +580,17 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
     { const a = H(TO); t('oylik: qat\'iy 3 000 000', a && a.summa === 3000000 && a.ogohlantirish.length === 0, a); }
     { const a = H(TP); t('foiz: guruhga o\'sha oy tushgan 400 000 dan 40% = 160 000 (joriy oy to\'lovi kirmaydi)', a && a.tushum === 400000 && a.summa === 160000, a); }
     t('hisobot: jami = o\'qituvchilar summalari yig\'indisi', r.d.jami === r.d.items.reduce((s, x) => s + x.summa, 0), r.d.jami);
-    r = await call('GET', `/oqituvchi-hisobot?oy=${new Date(Date.now() + 70 * 86400000).toISOString().slice(0, 7)}`, null, KA); t('hisobot: kelajak oyi → 400', r.s === 400, r);
-    r = await call('GET', '/oqituvchi-hisobot?oy=2026-13', null, KA); t('hisobot: noto\'g\'ri oy → 400', r.s === 400, r);
+    r = await call('GET', `/oqituvchi-hisobot?oy=${new Date(Date.now() + 70 * 86400000).toISOString().slice(0, 7)}`, null, SU); t('hisobot: kelajak oyi → 400', r.s === 400, r);
+    r = await call('GET', '/oqituvchi-hisobot?oy=2026-13', null, SU); t('hisobot: noto\'g\'ri oy → 400', r.s === 400, r);
     r = await call('GET', `/oqituvchi-hisobot?oy=${PM}`); t('hisobot: tokensiz → 401', r.s === 401, r);
-    r = await call('GET', `/oqituvchi-hisobot?oy=${PM}`, null, KB); t('hisobot: boshqa filial o\'qituvchilarini ko\'rmaydi', r.s === 200 && !r.d.items.some(x => [TS, TO, TP].includes(x.id)), r);
-    { const x = await fetch(`${B}/oqituvchi-hisobot/excel?oy=${PM}`, { headers: { Authorization: 'Bearer ' + KA } }); const buf = Buffer.from(await x.arrayBuffer());
+    r = await call('GET', `/oqituvchi-hisobot?oy=${PM}`, null, SU, { 'X-Filial-Id': String(F2) }); t('hisobot: boshqa filial o\'qituvchilarini ko\'rmaydi', r.s === 200 && !r.d.items.some(x => [TS, TO, TP].includes(x.id)), r);
+    { const x = await fetch(`${B}/oqituvchi-hisobot/excel?oy=${PM}`, { headers: { Authorization: 'Bearer ' + SU, 'X-Filial-Id': String(F1) } }); const buf = Buffer.from(await x.arrayBuffer());
       t('hisobot: Excel (.xlsx) yuklanadi', x.status === 200 && /spreadsheetml/.test(x.headers.get('content-type')) && buf.length > 1000 && buf.slice(0, 2).toString() === 'PK', { s: x.status, n: buf.length }); }
     // to'lov turini o'zgartirish: eski qiymatlar tozalanadi
-    r = await call('PUT', `/oqituvchilar/${TS}`, { ...T0, ism: 'Soat', haq_turi: 'foiz', foiz: 25 }, KA); t('to\'lov turini soatbaydan foizga o\'zgartirish', r.s === 200, r);
-    r = await call('GET', '/oqituvchilar', null, KA);
+    r = await call('PUT', `/oqituvchilar/${TS}`, { ...T0, ism: 'Soat', haq_turi: 'foiz', foiz: 25 }, SU); t('to\'lov turini soatbaydan foizga o\'zgartirish', r.s === 200, r);
+    r = await call('GET', '/oqituvchilar', null, SU);
     { const a = r.d.items.find(x => x.id === TS); t('o\'zgargach: stavka tozalangan, foiz 25', a.haq_turi === 'foiz' && a.foiz === 25 && a.soat_stavka === null, a); }
-    r = await call('PUT', `/oqituvchilar/${TS}`, { ...T0, ism: 'Soat' }, KA); t('tahrirda to\'lov turisiz → 400', r.s === 400, r);
+    r = await call('PUT', `/oqituvchilar/${TS}`, { ...T0, ism: 'Soat' }, SU); t('tahrirda to\'lov turisiz → 400', r.s === 400, r);
     for (const g of [gS, gS2, gO, gP]) await call('DELETE', `/guruhlar/${g}`, null, KA);
     for (const o of [TS, TO, TP]) await call('DELETE', `/oqituvchilar/${o}`, null, KA);
     for (const o of [SA, SB]) await call('DELETE', `/oquvchilar/${o}`, null, KA);

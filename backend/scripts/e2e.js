@@ -586,14 +586,117 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
     r = await call('GET', `/oqituvchi-hisobot?oy=${PM}`, null, SU, { 'X-Filial-Id': String(F2) }); t('hisobot: boshqa filial o\'qituvchilarini ko\'rmaydi', r.s === 200 && !r.d.items.some(x => [TS, TO, TP].includes(x.id)), r);
     { const x = await fetch(`${B}/oqituvchi-hisobot/excel?oy=${PM}`, { headers: { Authorization: 'Bearer ' + SU, 'X-Filial-Id': String(F1) } }); const buf = Buffer.from(await x.arrayBuffer());
       t('hisobot: Excel (.xlsx) yuklanadi', x.status === 200 && /spreadsheetml/.test(x.headers.get('content-type')) && buf.length > 1000 && buf.slice(0, 2).toString() === 'PK', { s: x.status, n: buf.length }); }
+    // — OYNI TASDIQLASH (MUZLATISH)
+    const CUR = new Date().toISOString().slice(0, 7), PM2 = new Date(Date.UTC(dd.getUTCFullYear(), dd.getUTCMonth() - 2, 1)).toISOString().slice(0, 7);
+    const MZ = { filial_id: F1, oy: PM };
+    r = await call('POST', '/rahbar/oyliklar/muzlat', MZ, KA); t('admin /rahbar/oyliklar/muzlat → 403', r.s === 403, r);
+    r = await call('POST', '/rahbar/oyliklar/muzlat', { filial_id: F1, oy: CUR }, SU); t('joriy (tugamagan) oyni tasdiqlab bo\'lmaydi → 409', r.s === 409, r);
+    r = await call('POST', '/rahbar/oyliklar/muzlat', { filial_id: F1, oy: '2999-01' }, SU); t('kelajak oyini tasdiqlab bo\'lmaydi → 400', r.s === 400, r);
+    r = await call('POST', '/rahbar/oyliklar/muzlat', { filial_id: 999999, oy: PM }, SU); t('mavjud bo\'lmagan filial → 404', r.s === 404, r);
+    r = await call('POST', '/rahbar/oyliklar/muzlat', MZ, SU);
+    t('ogohlantirish bo\'lsa (davomiyligi yo\'q guruh) → 409, majbur_mumkin va ro\'yxat', r.s === 409 && r.d.majbur_mumkin === true && r.d.ogohlantirishlar.some(w => /davomiylig/i.test(w.matn)), r);
+    r = await call('GET', `/rahbar/oyliklar?oy=${PM}`, null, SU); t('ogohlantirish bilan rad etilganda oy muzlamagan', r.d.filiallar.find(f => f.id === F1).muzlatilgan === false, r.d.filiallar);
+    r = await call('POST', '/rahbar/oyliklar/muzlat', { ...MZ, majbur: true }, SU); t('majbur=true bilan oy tasdiqlanadi', r.s === 200 && r.d.jami > 0, r);
+    const JAMI0 = r.d.jami;
+    r = await call('POST', '/rahbar/oyliklar/muzlat', { ...MZ, majbur: true }, SU); t('takroriy tasdiqlash → 409', r.s === 409, r);
+    r = await call('GET', `/oqituvchi-hisobot?oy=${PM}`, null, SU); t('panel hisoboti tasdiqlangan oyni suratdan beradi (muzlatilgan:true)', r.d.muzlatilgan === true && r.d.jami === JAMI0 && !!r.d.tasdiqladi, r.d);
+    r = await call('GET', `/rahbar/jamlama?oy=${PM}`, null, SU); t('jamlama: F1 oyligi tasdiqlangan deb belgilanadi', r.d.items.find(x => x.id === F1).oylik_muzlatilgan === true && r.d.items.find(x => x.id === F1).oylik === JAMI0, r.d.items.find(x => x.id === F1));
+    // muzlatilgan oy davomati o'zgarmaydi
+    r = await call('PUT', `/guruhlar/${gS}/davomat`, { sana: `${PM}-15`, items: [{ oquvchi_id: SA, holat: 'keldi' }] }, KA); t('tasdiqlangan oy davomatini o\'zgartirib bo\'lmaydi → 409', r.s === 409 && /tasdiqlangan/.test(r.d.error), r);
+    r = await call('PUT', `/guruhlar/${gS}/davomat`, { sana: new Date().toISOString().slice(0, 10), items: [{ oquvchi_id: SA, holat: 'keldi' }] }, KA); t('joriy oy davomati o\'zgarishsiz ishlaydi (muzlamagan oy)', r.s === 200, r);
+    // O'qituvchilarga to'langan haq
+    const HQ = (tid, summa, extra) => call('POST', '/rahbar/oyliklar/tolov', { filial_id: F1, oy: PM, oqituvchi_id: tid, summa, ...extra }, SU);
+    r = await call('POST', '/rahbar/oyliklar/tolov', { filial_id: F1, oy: PM, oqituvchi_id: TS, summa: 1000 }, KA); t('admin o\'qituvchiga haq to\'lay olmaydi → 403', r.s === 403, r);
+    r = await HQ(TS, 0); t('haq: 0 summa → 400', r.s === 400, r);
+    r = await HQ(TS, -5); t('haq: manfiy summa → 400', r.s === 400, r);
+    r = await HQ(TS, 1000, { sana: '2999-01-01' }); t('haq: kelajak sanasi → 400', r.s === 400, r);
+    r = await HQ(999999, 1000); t('haq: hisobotda yo\'q o\'qituvchi → 404', r.s === 404, r);
+    r = await call('POST', '/rahbar/oyliklar/tolov', { filial_id: F1, oy: PM2, oqituvchi_id: TS, summa: 1000 }, SU); t('haq: tasdiqlanmagan oy uchun → 409', r.s === 409 && /tasdiqlang/.test(r.d.error), r);
+    r = await HQ(TS, 100000, { usul: 'karta', izoh: 'avans' }); t('haq: 100 000 to\'landi', r.s === 200 && r.d.id, r); const HQ1 = r.d.id;
+    r = await HQ(TS, 60000); t('haq: hisoblangan 150 000 dan oshsa → 409 (qoldiq 50 000)', r.s === 409 && /50000/.test(r.d.error), r);
+    r = await HQ(TS, 50000); t('haq: qolgan 50 000 to\'landi', r.s === 200, r); const HQ2 = r.d.id;
+    r = await HQ(TO, 1000000); t('haq: oylik o\'qituvchiga 1 000 000', r.s === 200, r); const HQ3 = r.d.id;
+    r = await call('GET', `/rahbar/oyliklar?oy=${PM}`, null, SU);
+    { const a = r.d.items.find(x => x.id === TS), b = r.d.items.find(x => x.id === TO), c = r.d.items.find(x => x.id === TP), fj = r.d.filiallar.find(f => f.id === F1);
+      t('haq holati: to\'liq to\'langan', a.tolangan === 150000 && a.qoldiq === 0 && a.haq_holat === 'tolangan' && a.tolovlar.length === 2 && a.tolovlar[0].usul === 'karta', a);
+      t('haq holati: qisman (1 000 000 / 3 000 000)', b.tolangan === 1000000 && b.qoldiq === 2000000 && b.haq_holat === 'qisman', b);
+      t('haq holati: to\'lanmagan', c.tolangan === 0 && c.qoldiq === c.summa && c.haq_holat === 'yoq', c);
+      t('filial: tasdiqlangan, to\'langan va qoldiq yig\'indisi', fj.muzlatilgan === true && fj.tolangan === 1150000 && fj.qoldiq === fj.jami - 1150000 && !!fj.tasdiqladi, fj);
+      t('umumiy: to\'langan/qoldiq jami', r.d.tolangan >= 1150000 && r.d.qoldiq >= 0, { t: r.d.tolangan, q: r.d.qoldiq }); }
+    { const x = await fetch(`${B}/rahbar/oyliklar/excel?oy=${PM}`, { headers: { Authorization: 'Bearer ' + SU } }); const buf = Buffer.from(await x.arrayBuffer());
+      t('Excel: to\'langan/qoldiq ustunlari bilan yuklanadi', x.status === 200 && buf.slice(0, 2).toString() === 'PK' && buf.length > 1000, x.status); }
+    // oyni qayta ochish
+    r = await call('POST', '/rahbar/oyliklar/och', { ...MZ, sabab: 'Xato topildi' }, KA); t('admin oyni qayta ocha olmaydi → 403', r.s === 403, r);
+    r = await call('POST', '/rahbar/oyliklar/och', { ...MZ, sabab: 'x' }, SU); t('qayta ochish: sababsiz → 400', r.s === 400, r);
+    r = await call('POST', '/rahbar/oyliklar/och', { ...MZ, sabab: 'Xato topildi' }, SU); t('qayta ochish: haq to\'langan bo\'lsa → 409', r.s === 409 && /to'langan/.test(r.d.error), r);
     // to'lov turini o'zgartirish: eski qiymatlar tozalanadi
     r = await call('PUT', `/oqituvchilar/${TS}`, { ...T0, ism: 'Soat', haq_turi: 'foiz', foiz: 25 }, SU); t('to\'lov turini soatbaydan foizga o\'zgartirish', r.s === 200, r);
     r = await call('GET', '/oqituvchilar', null, SU);
     { const a = r.d.items.find(x => x.id === TS); t('o\'zgargach: stavka tozalangan, foiz 25', a.haq_turi === 'foiz' && a.foiz === 25 && a.soat_stavka === null, a); }
     r = await call('PUT', `/oqituvchilar/${TS}`, { ...T0, ism: 'Soat' }, SU); t('tahrirda to\'lov turisiz → 400', r.s === 400, r);
+    // Muzlatilgan oy: o'qituvchi haqi o'zgarsa ham tasdiqlangan oy o'zgarmaydi
+    r = await call('GET', `/oqituvchi-hisobot?oy=${PM}`, null, SU);
+    { const a = r.d.items.find(x => x.id === TS); t('muzlatilgan oy: haq turi o\'zgargach ham eski hisob saqlangan (soatbay 150 000)', r.d.muzlatilgan === true && a.haq_turi === 'soatbay' && a.summa === 150000 && r.d.jami === JAMI0, a); }
+    r = await call('GET', `/rahbar/oyliklar?oy=${CUR}`, null, SU); t('joriy oy hamon jonli hisob (muzlatilmagan)', r.d.filiallar.find(f => f.id === F1).muzlatilgan === false, r.d.filiallar);
+    r = await call('DELETE', `/rahbar/oyliklar/tolov/${HQ1}`, null, KA); t('admin haq yozuvini o\'chira olmaydi → 403', r.s === 403, r);
+    r = await call('DELETE', '/rahbar/oyliklar/tolov/999999', null, SU); t('mavjud bo\'lmagan haq yozuvi → 404', r.s === 404, r);
+    for (const id of [HQ1, HQ2, HQ3]) { r = await call('DELETE', `/rahbar/oyliklar/tolov/${id}`, null, SU); t('haq yozuvini o\'chirish', r.s === 200, r); }
+    r = await call('POST', '/rahbar/oyliklar/och', { ...MZ, sabab: 'Xato topildi' }, SU); t('haq yozuvlari yo\'q bo\'lsa oy qayta ochiladi', r.s === 200, r);
+    r = await call('GET', `/oqituvchi-hisobot?oy=${PM}`, null, SU);
+    { const a = r.d.items.find(x => x.id === TS); t('qayta ochilgach hisob yana jonli (yangi haq turi: foiz 25%)', r.d.muzlatilgan === false && a.haq_turi === 'foiz', a); }
+    r = await call('POST', '/rahbar/oyliklar/och', { ...MZ, sabab: 'Yana' }, SU); t('tasdiqlanmagan oyni qayta ochish → 404', r.s === 404, r);
+    r = await call('PUT', `/guruhlar/${gS}/davomat`, { sana: `${PM}-15`, items: [{ oquvchi_id: SA, holat: 'keldi' }] }, KA); t('oy ochilgach davomat yana o\'zgaradi', r.s === 200, r);
+    // admin to'lov qabul qiladi va o'chiradi — ikkalasi ham jurnalda
+    r = await call('POST', `/guruhlar/${gP}/oquvchilar`, { oquvchi_id: SA }, KA); t('guruhga o\'quvchi qo\'shish', r.s === 200, r);
+    r = await call('POST', '/tolovlar', { oquvchi_id: SA, guruh_id: gP, summa: 12345 }, KA); t('admin to\'lov qabul qiladi', r.s === 200, r); const TLV = r.d.id;
+    r = await call('DELETE', `/tolovlar/${TLV}`, null, KA); t('admin to\'lovni o\'chiradi', r.s === 200, r);
+    r = await call('DELETE', `/guruhlar/${gP}/oquvchilar/${SA}`, null, KA); t('guruhdan o\'quvchini chiqarish', r.s === 200, r);
     for (const g of [gS, gS2, gO, gP]) await call('DELETE', `/guruhlar/${g}`, null, KA);
     for (const o of [TS, TO, TP]) await call('DELETE', `/oqituvchilar/${o}`, null, KA);
     for (const o of [SA, SB]) await call('DELETE', `/oquvchilar/${o}`, null, KA);
+
+    // — AUDIT JURNALI
+    r = await call('GET', '/rahbar/audit', null, KA); t('admin audit jurnalini ko\'ra olmaydi → 403', r.s === 403, r);
+    r = await call('GET', '/rahbar/audit'); t('tokensiz audit → 401', r.s === 401, r);
+    const AU = async q => (await call('GET', '/rahbar/audit?' + q, null, SU)).d;
+    { const d = await AU(`filial_id=${F1}&obyekt=oylik&limit=100`);
+      const am = d.items.map(x => x.amal);
+      t('audit: oyni tasdiqlash, haq to\'lash, haq yozuvini o\'chirish va qayta ochish yozilgan', ['muzlatdi', 'yaratdi', 'ochirdi', 'qayta_ochdi'].every(a => am.includes(a)), am);
+      const mz = d.items.find(x => x.amal === 'muzlatdi'), oc = d.items.find(x => x.amal === 'qayta_ochdi');
+      t('audit: tasdiqlash yozuvi (kim, filial, summa)', mz && mz.aktor_turi === 'superadmin' && mz.filial_id === F1 && !!mz.filial_nomi && mz.yangi.jami === JAMI0 && mz.yangi.ogohlantirish_bilan === true, mz);
+      t('audit: qayta ochish sababi yozilgan', oc && /Xato topildi/.test(oc.tavsif) && oc.eski.jami === JAMI0, oc); }
+    { const d = await AU(`filial_id=${F1}&obyekt=tolov&aktor=admin&limit=100`);
+      t('audit: admin qabul qilgan to\'lovlar (kim, summa, o\'quvchi)', d.items.some(x => x.amal === 'yaratdi' && x.aktor_turi === 'admin' && x.aktor_nomi && x.yangi.summa > 0 && x.ip !== undefined), d.items[0]);
+      t('audit: o\'chirilgan to\'lov to\'liq nusxasi bilan saqlangan', d.items.some(x => x.amal === 'ochirdi' && x.eski && x.eski.summa > 0 && x.eski.oquvchi), d.items.filter(x => x.amal === 'ochirdi')); }
+    { const d = await AU(`filial_id=${F1}&obyekt=oqituvchi&amal=ozgartirdi&q=haq&limit=100`);
+      const x = d.items.find(i => i.eski && i.eski.haq_turi === 'soatbay' && i.yangi && i.yangi.haq_turi === 'foiz');
+      t('audit: o\'qituvchi haqi o\'zgargani (soatbay → foiz) eski/yangi qiymat bilan', !!x && /haq/.test(x.tavsif) && x.aktor_turi === 'superadmin', d.items[0]); }
+    { const d = await AU(`filial_id=${F1}&obyekt=oquvchi&amal=ochirdi&limit=100`);
+      const x = d.items.find(i => i.eski && i.eski.familiya === 'Haq' && i.eski.ism === 'A');
+      t('audit: o\'quvchi o\'chirilganda yo\'qolgan to\'lov/davomat soni yozilgan', !!x && x.eski.tolovlar_soni === 2 && x.eski.tolovlar_summa === 350000 && typeof x.eski.davomat_soni === 'number', d.items.map(i => i.eski)); }
+    { const d = await AU(`filial_id=${F1}&obyekt=guruh&amal=ochirdi&limit=100`);
+      t('audit: o\'chirilgan guruh nusxasi (oylik narx bilan)', d.items.some(x => x.eski && x.eski.nomi === 'HAQ-P' && x.eski.oylik_narx === 200000), d.items.map(i => i.eski)); }
+    { const d = await AU(`obyekt=admin&q=parol&limit=100`);
+      t('audit: parol almashtirilgani yozilgan, parolning o\'zi/hash yo\'q', d.items.some(x => /parol almashtirildi/.test(x.tavsif) && x.yangi.parol_almashtirildi === true), d.items.map(i => i.tavsif));
+      const all = JSON.stringify((await AU('limit=200')).items) + JSON.stringify(d.items);
+      t('audit: hech qaysi yozuvda parol hash/parol matni yo\'q', !/\$2[aby]\$|YangiParol777|Parol12345/.test(all), 'sir topildi'); }
+    { const d = await AU('obyekt=kirish&limit=200');
+      t('audit: kirishlar (admin va rahbar) yozilgan', d.items.some(x => x.amal === 'kirdi' && x.aktor_turi === 'admin') && d.items.some(x => x.amal === 'kirdi' && x.aktor_turi === 'superadmin'), d.items.length);
+      t('audit: muvaffaqiyatsiz kirish urinishlari yozilgan (noma\'lum login ham)', d.items.some(x => x.amal === 'kira_olmadi' && x.aktor_turi === 'tizim'), d.items.length); }
+    { const d1 = await AU('limit=2'), d2 = await AU('limit=2&offset=2');
+      t('audit: sahifalash (limit/offset, total)', d1.items.length === 2 && d2.items.length === 2 && d1.total > 4 && d1.items[0].id > d1.items[1].id && d2.items[0].id < d1.items[1].id, { total: d1.total });
+      const dn = await AU(`dan=${new Date(Date.now() - 2 * 86400000).toISOString().slice(0, 10)}&gacha=${new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10)}&limit=1`);
+      t('audit: sana oralig\'i filtri', dn.total > 0, dn.total);
+      const dz = await AU('dan=2000-01-01&gacha=2000-01-02');
+      t('audit: bo\'sh oraliq → 0 ta', dz.total === 0 && dz.items.length === 0, dz);
+      const bq = await AU("q=%25_'--");
+      t('audit: maxsus belgili qidiruv xato bermaydi', bq.ok === true && bq.total === 0, bq);
+      const bf = await AU('obyekt=xxx&amal=yyy&aktor=zzz'); t('audit: noto\'g\'ri filtr e\'tiborga olinmaydi', bf.ok === true && bf.total > 0, bf.total); }
+    { const pool2 = require('../src/db');
+      let e1 = null, e2 = null;
+      try { await pool2.query("UPDATE audit_jurnali SET tavsif='hack' WHERE id=(SELECT MAX(id) FROM audit_jurnali)"); } catch (x) { e1 = x.message; }
+      try { await pool2.query('DELETE FROM audit_jurnali WHERE id=(SELECT MAX(id) FROM audit_jurnali)'); } catch (x) { e2 = x.message; }
+      t('audit jurnali bazada o\'zgartirilmaydi va o\'chirilmaydi (trigger)', /o'zgartirilmaydi/.test(e1 || '') && /o'zgartirilmaydi/.test(e2 || ''), { e1, e2 }); }
   }
 
   // — tozalash
@@ -611,6 +714,8 @@ const SFX = Math.random().toString(36).slice(2, 7);                        // lo
   r = await call('DELETE', `/filiallar/${F2}`, null, SU); t('to\'liq tozalangan F2 filialini o\'chirish', r.s === 200, r);
   SUF = F1;
   r = await call('DELETE', `/filiallar/${F1}`, null, SU); t('to\'liq tozalangan F1 filialini o\'chirish (qoldiq ma\'lumot yo\'q)', r.s === 200, r);
+  { const pool3 = require('../src/db'); const c = await pool3.query('SELECT COUNT(*)::int AS n, MAX(filial_nomi) AS nomi FROM audit_jurnali WHERE filial_id=$1', [F1]);
+    t('filial o\'chirilgandan keyin ham audit jurnali saqlanadi (filial nomi bilan)', c.rows[0].n > 5 && !!c.rows[0].nomi, c.rows[0]); }
   // — brute-force cheklovi
   let last; for (let i = 0; i < LMAX + 3; i++) last = await call('POST', '/auth/login', { username: 'superadmin', parol: 'x' + i });
   t('ko\'p urinishdan so\'ng → 429', last.s === 429, last);

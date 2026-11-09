@@ -942,7 +942,7 @@
           <td class="act"><button class="btn sm" data-o="${x.id}" type="button">${open ? 'Yopish' : 'Guruhlar'}</button></td></tr>` +
           (open ? `<tr class="det"><td class="dc" colspan="7">${guruhDetail(x)}</td></tr>` : '');
       }).join('');
-      body.innerHTML = `<div class="stats oy-stats" style="margin-bottom:14px">
+      body.innerHTML = (d.muzlatilgan ? `<div class="card" style="padding:10px 14px;margin-bottom:12px"><span class="badge ok">✅ Tasdiqlangan</span> <span class="muted">Bu oy oyliklari tasdiqlangan — hisob endi o'zgarmaydi.</span></div>` : '') + `<div class="stats oy-stats" style="margin-bottom:14px">
         <div class="card stat"><b>${esc(IC.money(d.jami))}</b><span>Jami hisoblangan</span></div>
         <div class="card stat"><b>${d.items.length}</b><span>O'qituvchilar</span></div>
         <div class="card stat"><b>${warn}</b><span>E'tibor talab qiladi</span></div></div>

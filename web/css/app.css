@@ -500,3 +500,18 @@ input.has-clr,textarea.has-clr{padding-right:36px}
 .rh-bar span{flex:1;background:color-mix(in srgb,var(--muted) 16%,transparent);border-radius:99px;height:6px;display:block}
 .rh-tot td{font-weight:700;background:color-mix(in srgb,var(--brand) 6%,var(--card))}
 .rh-sel{max-width:220px}
+.confirm h3{white-space:pre-line;font-weight:600;font-size:15px;line-height:1.5}
+.rh-fls{padding:4px 16px;margin-bottom:14px}
+.rh-fl{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line)}
+.rh-fl:last-child{border-bottom:0}
+.rh-fl-in{flex:1 1 220px;min-width:0}
+.rh-fl-n{display:flex;gap:22px;flex-wrap:wrap}
+.rh-fl-n small{display:block;color:var(--muted);font-size:12px;font-weight:400}
+.rh-fl-n>div{font-weight:700}
+.au-f{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.au-f .rh-sel{max-width:190px}
+.au-f .search{max-width:220px}
+.au-dt{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:13px}
+.au-dt input{width:auto}
+.au-d{margin:4px 0}
+@media(min-width:769px){.rh-tbl th,.rh-tbl td{padding-left:8px;padding-right:8px}.rh-tbl td.act{white-space:normal;min-width:120px}.rh-tbl td.act .btn{margin:2px 2px 2px 0}}

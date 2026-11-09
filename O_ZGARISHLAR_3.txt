@@ -1,0 +1,8 @@
+3-BOSQICH: Audit jurnali + oyliklarni tasdiqlash (muzlatish) + haq to'lovlari
+
+DIQQAT: bazaga yangi jadvallar qo'shiladi (audit_jurnali, oylik_oylar, oylik_tolovlar).
+Fayllarni almashtirgach: cd backend && npm run db:setup  (so'ng pm2 restart) — mavjud ma'lumotlarga tegmaydi.
+
+Yangi: backend/src/audit.js
+O'zgargan: backend/schema.sql, backend/src/routes/{panel,rahbar,filiallar,kursAdminlar,auth}.js,
+           backend/scripts/e2e.js, web/js/{rahbar,superadmin,common,panel}.js, web/css/app.css, README.md

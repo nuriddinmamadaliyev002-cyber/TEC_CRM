@@ -5,6 +5,7 @@ const { Router } = require('express');
 const pool = require('../db');
 const panelAuth = require('../middleware/panelAuth');
 const { str, int, num, phone, date, bad, wrap, todayISO } = require('../util');
+const audit = require('../audit');
 
 const router = Router();
 router.use(panelAuth);
@@ -24,6 +25,9 @@ function realDate(v) {
 // Filial bo'yicha egalik tekshiruvlari (req.filialId panelAuth'dan keladi). Boshqa filial obyekti → «topilmadi».
 const inFilial = async (table, id, filial) =>
   !!id && !!filial && (await pool.query(`SELECT 1 FROM ${table} WHERE id=$1 AND filial_id=$2`, [id, filial])).rowCount > 0; // table — faqat quyidagi qat'iy nomlar
+// O'zgartirish/o'chirishdan OLDIN eski holatni olish (audit jurnali uchun). table/cols — faqat quyidagi qat'iy qiymatlar.
+const rowOf = async (table, id, filial, cols = '*') => (await pool.query(`SELECT ${cols} FROM ${table} WHERE id=$1 AND filial_id=$2`, [id, filial])).rows[0] || null;
+const oqNomi = async id => ((await pool.query("SELECT TRIM(familiya||' '||ism) AS n FROM oquvchilar WHERE id=$1", [id])).rows[0] || {}).n || '#' + id;
 const GURUH_YOPIQ = "Guruh yopilgan. Avval uni «Tahrirlash» orqali qayta oching";
 
 // ═══ FANLAR (o'quv markazda o'tiladigan fanlar nomenklaturasi) ═══════════════
@@ -43,17 +47,25 @@ function fanBody(b) {
 router.post('/fanlar', wrap(async (req, res) => {
   const { err, v } = fanBody(req.body); if (err) return bad(res, err);
   const r = await pool.query('INSERT INTO fanlar(nomi,tavsif,faol,filial_id) VALUES($1,$2,$3,$4) RETURNING id', [...v, req.filialId]);
+  await audit.log(req, { amal: 'yaratdi', obyekt: 'fan', id: r.rows[0].id, tavsif: `Fan qo'shildi: ${v[0]}` });
   res.json({ ok: true, id: r.rows[0].id });
 }));
 router.put('/fanlar/:id', wrap(async (req, res) => {
   const { err, v } = fanBody(req.body); if (err) return bad(res, err);
-  const r = await pool.query('UPDATE fanlar SET nomi=$1,tavsif=$2,faol=$3 WHERE id=$4 AND filial_id=$5', [...v, int(req.params.id) || 0, req.filialId]);
-  r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+  const id = int(req.params.id) || 0, old = await rowOf('fanlar', id, req.filialId, 'nomi,tavsif,faol');
+  const r = await pool.query('UPDATE fanlar SET nomi=$1,tavsif=$2,faol=$3 WHERE id=$4 AND filial_id=$5', [...v, id, req.filialId]);
+  if (!r.rowCount) return bad(res, 'Topilmadi', 404);
+  const d = audit.diff(old, { nomi: v[0], tavsif: v[1], faol: v[2] }, ['nomi', 'tavsif', 'faol']);
+  if (d) await audit.log(req, { amal: 'ozgartirdi', obyekt: 'fan', id, tavsif: `Fan o'zgartirildi: ${v[0]}`, ...d });
+  res.json({ ok: true });
 }));
 router.delete('/fanlar/:id', wrap(async (req, res) => {
   try {
-    const r = await pool.query('DELETE FROM fanlar WHERE id=$1 AND filial_id=$2', [int(req.params.id) || 0, req.filialId]);
-    r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+    const id = int(req.params.id) || 0, old = await rowOf('fanlar', id, req.filialId, 'nomi,tavsif,faol');
+    const r = await pool.query('DELETE FROM fanlar WHERE id=$1 AND filial_id=$2', [id, req.filialId]);
+    if (!r.rowCount) return bad(res, 'Topilmadi', 404);
+    await audit.log(req, { amal: 'ochirdi', obyekt: 'fan', id, tavsif: `Fan o'chirildi: ${old && old.nomi}`, eski: old });
+    res.json({ ok: true });
   } catch (e) {
     if (e.code === '23503') return bad(res, "Bu fanga guruhlar yoki o'qituvchilar biriktirilgan. Avval ularni o'zgartiring yoki fanni nofaol qiling", 409);
     throw e;
@@ -105,6 +117,8 @@ oqituvchilar.post('/', wrap(async (req, res) => {
         [...v, req.filialId])
       : await pool.query( // haq turi NULL — «belgilanmagan»: rahbar keyin belgilaydi
         `INSERT INTO oqituvchilar(ism,familiya,telefon,faol,fan_id,filial_id) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`, [...v, req.filialId]);
+    await audit.log(req, { amal: 'yaratdi', obyekt: 'oqituvchi', id: q.rows[0].id, tavsif: `O'qituvchi qo'shildi: ${v[1]} ${v[0]}`.replace('  ', ' '),
+      yangi: su ? { fan_id: v[4], haq_turi: v[5], soat_stavka: v[6], oylik_maosh: v[7], foiz: v[8] } : { fan_id: v[4] } });
     res.json({ ok: true, id: q.rows[0].id });
   } catch (e) { if (e.code === '23503') return bad(res, 'Fan topilmadi'); throw e; }
 }));
@@ -116,6 +130,8 @@ oqituvchilar.put('/:id', wrap(async (req, res) => {
   // Fan o'zgarsa, o'qituvchi boshqa fan guruhlarida qolib ketmasin
   if ((await pool.query('SELECT 1 FROM guruhlar WHERE oqituvchi_id=$1 AND fan_id<>$2 LIMIT 1', [id, v[4]])).rowCount)
     return bad(res, "Bu o'qituvchi boshqa fan guruhlarida dars beradi. Avval o'sha guruhlarni o'zgartiring", 409);
+  const OQ_COLS = 'ism,familiya,telefon,faol,fan_id,haq_turi,soat_stavka::float AS soat_stavka,oylik_maosh::float AS oylik_maosh,foiz::float AS foiz';
+  const old = await rowOf('oqituvchilar', id, req.filialId, OQ_COLS);
   try {
     const q = su
       ? await pool.query(
@@ -123,12 +139,23 @@ oqituvchilar.put('/:id', wrap(async (req, res) => {
         [...v, id, req.filialId])
       : await pool.query( // admin haq maydonlariga tegmaydi — ular o'zgarishsiz qoladi
         `UPDATE oqituvchilar SET ism=$1,familiya=$2,telefon=$3,faol=$4,fan_id=$5 WHERE id=$6 AND filial_id=$7`, [...v, id, req.filialId]);
-    q.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+    if (!q.rowCount) return bad(res, 'Topilmadi', 404);
+    const nw = { ism: v[0], familiya: v[1], telefon: v[2], faol: v[3], fan_id: v[4] };
+    if (su) Object.assign(nw, { haq_turi: v[5], soat_stavka: v[6], oylik_maosh: v[7], foiz: v[8] });
+    const d = audit.diff(old, nw, Object.keys(nw));
+    if (d) {
+      const haq = ['haq_turi', 'soat_stavka', 'oylik_maosh', 'foiz'].some(k => k in d.yangi);
+      await audit.log(req, { amal: 'ozgartirdi', obyekt: 'oqituvchi', id, tavsif: `O'qituvchi o'zgartirildi: ${v[1]} ${v[0]}${haq ? " (to'lov/haq o'zgardi)" : ''}`.replace('  ', ' '), ...d });
+    }
+    res.json({ ok: true });
   } catch (e) { if (e.code === '23503') return bad(res, 'Fan topilmadi'); throw e; }
 }));
 oqituvchilar.delete('/:id', wrap(async (req, res) => {
-  const q = await pool.query('DELETE FROM oqituvchilar WHERE id=$1 AND filial_id=$2', [int(req.params.id) || 0, req.filialId]);
-  q.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+  const id = int(req.params.id) || 0, old = await rowOf('oqituvchilar', id, req.filialId, 'ism,familiya,telefon,faol,fan_id');
+  const q = await pool.query('DELETE FROM oqituvchilar WHERE id=$1 AND filial_id=$2', [id, req.filialId]);
+  if (!q.rowCount) return bad(res, 'Topilmadi', 404);
+  await audit.log(req, { amal: 'ochirdi', obyekt: 'oqituvchi', id, tavsif: `O'qituvchi o'chirildi: ${old && `${old.familiya} ${old.ism}`.trim()}`, eski: old });
+  res.json({ ok: true });
 }));
 router.use('/oqituvchilar', oqituvchilar);
 
@@ -160,16 +187,27 @@ oquvchilar.get('/', wrap(async (req, res) => {
 oquvchilar.post('/', wrap(async (req, res) => { // yangi o'quvchi doim FAOL
   const { err, v } = oquvchiBody(req.body || {}); if (err) return bad(res, err);
   const q = await pool.query('INSERT INTO oquvchilar(ism,familiya,telefon,manzil,filial_id) VALUES($1,$2,$3,$4,$5) RETURNING id', [...v, req.filialId]);
+  await audit.log(req, { amal: 'yaratdi', obyekt: 'oquvchi', id: q.rows[0].id, tavsif: `O'quvchi qo'shildi: ${v[1]} ${v[0]}`.replace('  ', ' ') });
   res.json({ ok: true, id: q.rows[0].id });
 }));
 oquvchilar.put('/:id', wrap(async (req, res) => { // holat (faol/nofaol) bu yerda o'zgarmaydi
   const { err, v } = oquvchiBody(req.body || {}); if (err) return bad(res, err);
-  const q = await pool.query('UPDATE oquvchilar SET ism=$1,familiya=$2,telefon=$3,manzil=$4 WHERE id=$5 AND filial_id=$6', [...v, int(req.params.id) || 0, req.filialId]);
-  q.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+  const id = int(req.params.id) || 0, old = await rowOf('oquvchilar', id, req.filialId, 'ism,familiya,telefon,manzil');
+  const q = await pool.query('UPDATE oquvchilar SET ism=$1,familiya=$2,telefon=$3,manzil=$4 WHERE id=$5 AND filial_id=$6', [...v, id, req.filialId]);
+  if (!q.rowCount) return bad(res, 'Topilmadi', 404);
+  const d = audit.diff(old, { ism: v[0], familiya: v[1], telefon: v[2], manzil: v[3] }, ['ism', 'familiya', 'telefon', 'manzil']);
+  if (d) await audit.log(req, { amal: 'ozgartirdi', obyekt: 'oquvchi', id, tavsif: `O'quvchi o'zgartirildi: ${v[1]} ${v[0]}`.replace('  ', ' '), ...d });
+  res.json({ ok: true });
 }));
 oquvchilar.delete('/:id', wrap(async (req, res) => {
-  const q = await pool.query('DELETE FROM oquvchilar WHERE id=$1 AND filial_id=$2', [int(req.params.id) || 0, req.filialId]);
-  q.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+  const id = int(req.params.id) || 0, old = await rowOf('oquvchilar', id, req.filialId, 'ism,familiya,telefon,manzil,faol');
+  // O'quvchi o'chsa, uning to'lovlari va davomati ham o'chadi — jurnalda qancha yo'qolgani ko'rinsin
+  const loss = old ? (await pool.query(`SELECT (SELECT COUNT(*)::int FROM tolovlar WHERE oquvchi_id=$1) AS tolovlar_soni,
+      (SELECT COALESCE(SUM(summa),0)::float FROM tolovlar WHERE oquvchi_id=$1) AS tolovlar_summa, (SELECT COUNT(*)::int FROM davomat WHERE oquvchi_id=$1) AS davomat_soni`, [id])).rows[0] : null;
+  const q = await pool.query('DELETE FROM oquvchilar WHERE id=$1 AND filial_id=$2', [id, req.filialId]);
+  if (!q.rowCount) return bad(res, 'Topilmadi', 404);
+  await audit.log(req, { amal: 'ochirdi', obyekt: 'oquvchi', id, tavsif: `O'quvchi o'chirildi: ${old && `${old.familiya} ${old.ism}`.trim()}`, eski: { ...old, ...loss } });
+  res.json({ ok: true });
 }));
 // Holatni o'zgartirishdan keyin: 0 qator → yo'q (404) yoki allaqachon shu holatda (409)
 const holatNatija = async (q, id, filial, res, text) => {
@@ -182,11 +220,13 @@ oquvchilar.post('/:id/nofaol', wrap(async (req, res) => {
   if (sabab.length < 3) return bad(res, "O'qishni to'xtatish sababini yozing (kamida 3 belgi)");
   const q = await pool.query('UPDATE oquvchilar SET faol=FALSE, nofaol_sana=$3::date, nofaol_sabab=$4 WHERE id=$1 AND filial_id=$2 AND faol',
     [id, req.filialId, todayISO(), sabab]);
+  if (q.rowCount) await audit.log(req, { amal: 'ozgartirdi', obyekt: 'oquvchi', id, tavsif: `O'quvchi nofaol qilindi: ${await oqNomi(id)}`, eski: { faol: true }, yangi: { faol: false, sabab } });
   await holatNatija(q, id, req.filialId, res, "O'quvchi allaqachon nofaol");
 }));
 oquvchilar.post('/:id/faol', wrap(async (req, res) => {
   const id = int(req.params.id) || 0;
   const q = await pool.query("UPDATE oquvchilar SET faol=TRUE, nofaol_sana=NULL, nofaol_sabab='' WHERE id=$1 AND filial_id=$2 AND NOT faol", [id, req.filialId]);
+  if (q.rowCount) await audit.log(req, { amal: 'ozgartirdi', obyekt: 'oquvchi', id, tavsif: `O'quvchi qayta faollashtirildi: ${await oqNomi(id)}`, eski: { faol: false }, yangi: { faol: true } });
   await holatNatija(q, id, req.filialId, res, "O'quvchi allaqachon faol");
 }));
 
@@ -219,6 +259,7 @@ oquvchilar.delete('/:id/yuz', wrap(async (req, res) => { // yuz ma'lumotlarini b
   if (!(await inFilial('oquvchilar', id, req.filialId))) return bad(res, 'Topilmadi', 404);
   await pool.query('DELETE FROM oquvchi_yuz WHERE oquvchi_id=$1', [id]);
   await pool.query('UPDATE oquvchilar SET yuz_rozilik=NULL WHERE id=$1', [id]);
+  await audit.log(req, { amal: 'ochirdi', obyekt: 'oquvchi', id, tavsif: `Yuz ma'lumoti o'chirildi: ${await oqNomi(id)}` });
   res.json({ ok: true });
 }));
 router.use('/oquvchilar', oquvchilar);
@@ -282,23 +323,34 @@ router.post('/guruhlar', wrap(async (req, res) => {
   try {
     const r = await pool.query(`INSERT INTO guruhlar(nomi,fan_id,oqituvchi_id,jadval,kunlar,soat,boshlanish,max_oquvchi,holat,oylik_narx,davomiylik,boshlangan_qabul,filial_id,yopilgan_sana)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, CASE WHEN $9='yopilgan' THEN $14::date END) RETURNING id`, [...v, req.filialId, todayISO()]);
+    await audit.log(req, { amal: 'yaratdi', obyekt: 'guruh', id: r.rows[0].id, tavsif: `Guruh qo'shildi: ${v[0]}`, yangi: { oylik_narx: v[9], holat: v[8], fan_id: v[1], oqituvchi_id: v[2], jadval: v[3] } });
     res.json({ ok: true, id: r.rows[0].id });
   } catch (e) { if (!fkErr(e, res)) throw e; }
 }));
 router.put('/guruhlar/:id', wrap(async (req, res) => {
   const { err, v } = guruhBody(req.body); if (err) return bad(res, err);
   const oe = await oqituvchiXato(v[1], v[2], req.filialId); if (oe) return bad(res, oe);
+  const gid0 = int(req.params.id) || 0, oldG = await rowOf('guruhlar', gid0, req.filialId, "nomi,fan_id,oqituvchi_id,jadval,to_char(boshlanish,'YYYY-MM-DD') AS boshlanish,max_oquvchi,holat,oylik_narx::float AS oylik_narx,davomiylik");
   try {
     // Yopilgan sana: yopilganda bir marta qo'yiladi (qayta saqlansa o'zgarmaydi), qayta ochilsa tozalanadi
     const r = await pool.query(`UPDATE guruhlar SET nomi=$1,fan_id=$2,oqituvchi_id=$3,jadval=$4,kunlar=$5,soat=$6,boshlanish=$7,max_oquvchi=$8,holat=$9,oylik_narx=$10,
         davomiylik=$11,boshlangan_qabul=$12, yopilgan_sana = CASE WHEN $9='yopilgan' THEN COALESCE(yopilgan_sana, $15::date) END
       WHERE id=$13 AND filial_id=$14`, [...v, int(req.params.id) || 0, req.filialId, todayISO()]);
-    r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+    if (!r.rowCount) return bad(res, 'Topilmadi', 404);
+    const nw = { nomi: v[0], fan_id: v[1], oqituvchi_id: v[2], jadval: v[3], boshlanish: v[6], max_oquvchi: v[7], holat: v[8], oylik_narx: v[9], davomiylik: v[10] };
+    const d = audit.diff(oldG, nw, Object.keys(nw));
+    if (d) await audit.log(req, { amal: 'ozgartirdi', obyekt: 'guruh', id: gid0, tavsif: `Guruh o'zgartirildi: ${v[0]}${'oylik_narx' in d.yangi ? ' (oylik narx o\'zgardi)' : ''}`, ...d });
+    res.json({ ok: true });
   } catch (e) { if (!fkErr(e, res)) throw e; }
 }));
 router.delete('/guruhlar/:id', wrap(async (req, res) => {
-  const r = await pool.query('DELETE FROM guruhlar WHERE id=$1 AND filial_id=$2', [int(req.params.id) || 0, req.filialId]);
-  r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+  const id = int(req.params.id) || 0, old = await rowOf('guruhlar', id, req.filialId, "nomi,fan_id,oqituvchi_id,jadval,to_char(boshlanish,'YYYY-MM-DD') AS boshlanish,max_oquvchi,holat,oylik_narx::float AS oylik_narx,davomiylik");
+  const loss = old ? (await pool.query(`SELECT (SELECT COUNT(*)::int FROM guruh_oquvchilari WHERE guruh_id=$1) AS oquvchilar_soni,
+      (SELECT COUNT(*)::int FROM davomat WHERE guruh_id=$1) AS davomat_soni, (SELECT COUNT(*)::int FROM tolovlar WHERE guruh_id=$1) AS tolovlar_soni`, [id])).rows[0] : null;
+  const r = await pool.query('DELETE FROM guruhlar WHERE id=$1 AND filial_id=$2', [id, req.filialId]);
+  if (!r.rowCount) return bad(res, 'Topilmadi', 404);
+  await audit.log(req, { amal: 'ochirdi', obyekt: 'guruh', id, tavsif: `Guruh o'chirildi: ${old && old.nomi}`, eski: { ...old, ...loss } });
+  res.json({ ok: true });
 }));
 
 // Guruh o'quvchilari
@@ -339,6 +391,7 @@ router.post('/guruhlar/:id/oquvchilar', wrap(async (req, res) => {
     if (n.rows[0].n >= g.rows[0].max_oquvchi) { await c.query('ROLLBACK'); return bad(res, "Guruh to'lgan", 409); }
     await c.query('INSERT INTO guruh_oquvchilari(guruh_id,oquvchi_id) VALUES($1,$2)', [gid, oid]);
     await c.query('COMMIT');
+    await audit.log(req, { amal: 'ozgartirdi', obyekt: 'guruh', id: gid, tavsif: `Guruhga o'quvchi qo'shildi: ${await oqNomi(oid)}`, yangi: { oquvchi_id: oid } });
     res.json({ ok: true });
   } catch (e) {
     await c.query('ROLLBACK').catch(() => {});
@@ -350,7 +403,9 @@ router.post('/guruhlar/:id/oquvchilar', wrap(async (req, res) => {
 router.delete('/guruhlar/:id/oquvchilar/:oid', wrap(async (req, res) => {
   if (!(await inFilial('guruhlar', int(req.params.id), req.filialId))) return bad(res, 'Guruh topilmadi', 404);
   const r = await pool.query('DELETE FROM guruh_oquvchilari WHERE guruh_id=$1 AND oquvchi_id=$2', [int(req.params.id), int(req.params.oid) || 0]);
-  r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+  if (!r.rowCount) return bad(res, 'Topilmadi', 404);
+  await audit.log(req, { amal: 'ozgartirdi', obyekt: 'guruh', id: int(req.params.id), tavsif: `Guruhdan o'quvchi chiqarildi: ${await oqNomi(int(req.params.oid))}`, eski: { oquvchi_id: int(req.params.oid) } });
+  res.json({ ok: true });
 }));
 
 // ═══ DAVOMAT (admin belgilaydi) ═════════════════════════════════════════════
@@ -383,6 +438,9 @@ router.put('/guruhlar/:id/davomat', wrap(async (req, res) => {
   const gr = await pool.query('SELECT holat FROM guruhlar WHERE id=$1 AND filial_id=$2', [gid, req.filialId]);
   if (!gr.rowCount) return bad(res, 'Guruh topilmadi', 404);
   if (gr.rows[0].holat === 'yopilgan') return bad(res, GURUH_YOPIQ, 409); // yopilgan guruh davomati faqat ko'riladi
+  // O'qituvchi oyliklari tasdiqlangan (muzlatilgan) oyning davomatini o'zgartirib bo'lmaydi — rahbar avval oyni qayta ochishi kerak
+  if ((await pool.query("SELECT 1 FROM oylik_oylar WHERE filial_id=$1 AND oy=date_trunc('month', $2::date)::date", [req.filialId, sana])).rowCount)
+    return bad(res, "Bu oy uchun o'qituvchi oyliklari tasdiqlangan — davomatni o'zgartirib bo'lmaydi. Rahbar oyni qayta ochishi kerak", 409);
   const ids = [], hol = [], seen = new Set();
   for (const it of items) {
     const oid = int(it && it.oquvchi_id);
@@ -439,8 +497,11 @@ router.put('/lidlar/:id', wrap(async (req, res) => {
   r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
 }));
 router.delete('/lidlar/:id', wrap(async (req, res) => {
-  const r = await pool.query('DELETE FROM lidlar WHERE id=$1 AND filial_id=$2', [int(req.params.id) || 0, req.filialId]);
-  r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+  const id = int(req.params.id) || 0, old = await rowOf('lidlar', id, req.filialId, 'ism,telefon,holat,guruh_nomi');
+  const r = await pool.query('DELETE FROM lidlar WHERE id=$1 AND filial_id=$2', [id, req.filialId]);
+  if (!r.rowCount) return bad(res, 'Topilmadi', 404);
+  await audit.log(req, { amal: 'ochirdi', obyekt: 'lid', id, tavsif: `Lid o'chirildi: ${old && old.ism}`, eski: old });
+  res.json({ ok: true });
 }));
 // Lidni o'quvchiga aylantirish: yangi o'quvchi yaratiladi va (guruh hali bor bo'lsa) shu guruhga qo'shiladi. Lid «Yozildi» bo'ladi.
 router.post('/lidlar/:id/oquvchi', wrap(async (req, res) => {
@@ -465,6 +526,7 @@ router.post('/lidlar/:id/oquvchi', wrap(async (req, res) => {
       await c.query('INSERT INTO guruh_oquvchilari(guruh_id,oquvchi_id) VALUES($1,$2)', [lid.guruh_id, o.rows[0].id]);
     await c.query("UPDATE lidlar SET holat='yozildi', oquvchi_id=$2 WHERE id=$1", [id, o.rows[0].id]);
     await c.query('COMMIT');
+    await audit.log(req, { amal: 'yaratdi', obyekt: 'oquvchi', id: o.rows[0].id, tavsif: `Lid o'quvchiga aylantirildi: ${lid.ism}`, yangi: { lid_id: id, guruh_id: lid.guruh_id } });
     res.json({ ok: true, oquvchi_id: o.rows[0].id, guruhga_qoshildi: !!lid.guruh_id });
   } catch (e) { await c.query('ROLLBACK').catch(() => {}); throw e; }
   finally { c.release(); }
@@ -498,8 +560,11 @@ router.put('/vakansiyalar/:id', wrap(async (req, res) => {
   } catch (e) { if (e.code === '23503') return bad(res, 'Fan topilmadi'); throw e; }
 }));
 router.delete('/vakansiyalar/:id', wrap(async (req, res) => { // nomzodlar qoladi (vakansiya nomi nusxasi bilan)
-  const r = await pool.query('DELETE FROM vakansiyalar WHERE id=$1 AND filial_id=$2', [int(req.params.id) || 0, req.filialId]);
-  r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+  const id = int(req.params.id) || 0, old = await rowOf('vakansiyalar', id, req.filialId, 'nomi,maosh,faol');
+  const r = await pool.query('DELETE FROM vakansiyalar WHERE id=$1 AND filial_id=$2', [id, req.filialId]);
+  if (!r.rowCount) return bad(res, 'Topilmadi', 404);
+  await audit.log(req, { amal: 'ochirdi', obyekt: 'vakansiya', id, tavsif: `Vakansiya o'chirildi: ${old && old.nomi}`, eski: old });
+  res.json({ ok: true });
 }));
 
 // ═══ NOMZODLAR (vakansiyaga botdan kelgan arizalar) ══════════════════════════
@@ -518,8 +583,11 @@ router.put('/nomzodlar/:id', wrap(async (req, res) => {
   r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
 }));
 router.delete('/nomzodlar/:id', wrap(async (req, res) => {
-  const r = await pool.query('DELETE FROM nomzodlar WHERE id=$1 AND filial_id=$2', [int(req.params.id) || 0, req.filialId]);
-  r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+  const id = int(req.params.id) || 0, old = await rowOf('nomzodlar', id, req.filialId, 'ism,telefon,vakansiya_nomi,holat');
+  const r = await pool.query('DELETE FROM nomzodlar WHERE id=$1 AND filial_id=$2', [id, req.filialId]);
+  if (!r.rowCount) return bad(res, 'Topilmadi', 404);
+  await audit.log(req, { amal: 'ochirdi', obyekt: 'nomzod', id, tavsif: `Nomzod o'chirildi: ${old && old.ism}`, eski: old });
+  res.json({ ok: true });
 }));
 // Rezyume: faylni Telegram saqlaydi (file_id). Bot tokeni bilan yuklab olib, adminga beramiz (Telegram limiti — 20 MB).
 router.get('/nomzodlar/:id/rezyume', wrap(async (req, res) => {
@@ -574,12 +642,19 @@ router.post('/tolovlar', wrap(async (req, res) => {
     const r = await pool.query(
       'INSERT INTO tolovlar(oquvchi_id,guruh_id,summa,sana,usul,izoh,kiritgan) VALUES($1,$2,$3,$4::date,$5,$6,$7) RETURNING id',
       [oid, gid, summa, b.sana || todayISO(), usul, str(b.izoh, 500), req.user.ism || '']);
+    await audit.log(req, { amal: 'yaratdi', obyekt: 'tolov', id: r.rows[0].id, tavsif: `To'lov qabul qilindi: ${await oqNomi(oid)} — ${summa} so'm`,
+      yangi: { oquvchi_id: oid, guruh_id: gid, summa, sana: b.sana || todayISO(), usul } });
     res.json({ ok: true, id: r.rows[0].id });
   } catch (e) { if (e.code === '23503') return bad(res, "O'quvchi yoki guruh topilmadi"); throw e; }
 }));
 router.delete('/tolovlar/:id', wrap(async (req, res) => {
-  const r = await pool.query('DELETE FROM tolovlar t USING oquvchilar o WHERE t.id=$1 AND o.id=t.oquvchi_id AND o.filial_id=$2', [int(req.params.id) || 0, req.filialId]);
-  r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+  const id = int(req.params.id) || 0;
+  const old = (await pool.query(`SELECT t.oquvchi_id, t.guruh_id, t.summa::float AS summa, to_char(t.sana,'YYYY-MM-DD') AS sana, t.usul, t.izoh, t.kiritgan, TRIM(o.familiya||' '||o.ism) AS oquvchi
+      FROM tolovlar t JOIN oquvchilar o ON o.id=t.oquvchi_id WHERE t.id=$1 AND o.filial_id=$2`, [id, req.filialId])).rows[0];
+  const r = await pool.query('DELETE FROM tolovlar t USING oquvchilar o WHERE t.id=$1 AND o.id=t.oquvchi_id AND o.filial_id=$2', [id, req.filialId]);
+  if (!r.rowCount) return bad(res, 'Topilmadi', 404);
+  await audit.log(req, { amal: 'ochirdi', obyekt: 'tolov', id, tavsif: `To'lov o'chirildi: ${old && old.oquvchi} — ${old && old.summa} so'm (${old && old.sana})`, eski: old });
+  res.json({ ok: true });
 }));
 
 // ═══ OYLIK TO'LOVLAR REESTRI ═════════════════════════════════════════════════
@@ -723,7 +798,13 @@ router.get('/tolov-reestr/excel', wrap(async (req, res) => {
 //  • oylik   — qat'iy oylik maosh;
 //  • foiz    — guruhlarga shu oyda haqiqatda tushgan to'lovlar yig'indisidan foiz (o'quvchi soniga bog'liq emas).
 // Guruhning HOZIRGI o'qituvchisi hisobga olinadi (o'qituvchi almashtirilsa, eski oylar ham yangisiga o'tadi — oyni muzlatish keyingi bosqich).
+// Tasdiqlangan (muzlatilgan) oy bo'lsa — saqlangan surat qaytadi (keyingi o'zgarishlar eski oyni buzmaydi); aks holda jonli hisob.
 async function oqituvchiHisobot(oy, filialId) {
+  const s = await pool.query('SELECT snapshot, yopilgan, tasdiqladi FROM oylik_oylar WHERE filial_id=$1 AND oy=$2::date', [filialId, oy + '-01']);
+  if (s.rowCount) return { ...s.rows[0].snapshot, muzlatilgan: true, yopilgan: s.rows[0].yopilgan, tasdiqladi: s.rows[0].tasdiqladi };
+  return { ...(await oqituvchiHisobotJonli(oy, filialId)), muzlatilgan: false };
+}
+async function oqituvchiHisobotJonli(oy, filialId) {
   const bosh = oy + '-01';
   const [t, g] = await Promise.all([
     pool.query(`SELECT t.id, t.ism, t.familiya, t.faol, t.haq_turi, t.soat_stavka::float AS soat_stavka, t.oylik_maosh::float AS oylik_maosh,
@@ -949,4 +1030,4 @@ router.get('/stats', wrap(async (req, res) => {
 
 module.exports = router;
 // Hisob-kitob funksiyalari rahbar jamlamasi (routes/rahbar.js) uchun — ikki joyda bir xil son chiqishi uchun bitta manba
-router.helpers = { reestrRows, rejaHisobot, oqituvchiHisobot, oyOk };
+router.helpers = { reestrRows, rejaHisobot, oqituvchiHisobot, oqituvchiHisobotJonli, oyOk };

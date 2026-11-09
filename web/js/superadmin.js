@@ -97,7 +97,7 @@
   };
 
   // ── Bo'limlar (rahbar: barcha filiallar bo'yicha jamlama, oyliklar, vakansiyalar, nomzodlar; filiallar va adminlar) ──
-  const TABS = [['jamlama', '📊 Umumiy'], ['oyliklar', '💰 Oyliklar'], ['vakansiyalar', '💼 Vakansiyalar'], ['nomzodlar', '📨 Nomzodlar'], ['filiallar', '🏢 Filiallar va adminlar']];
+  const TABS = [['jamlama', '📊 Umumiy'], ['oyliklar', '💰 Oyliklar'], ['vakansiyalar', '💼 Vakansiyalar'], ['nomzodlar', '📨 Nomzodlar'], ['audit', '🧾 Jurnal'], ['filiallar', '🏢 Filiallar va adminlar']];
   const nav = $('tabs'), rv = $('v-rahbar'), fv = $('v-filial');
   nav.innerHTML = TABS.map(([k, t]) => `<button class="tab" data-k="${k}" type="button">${t}</button>`).join('');
   function badge() { // yangi nomzodlar soni menyuda (filiallar ro'yxatidan)

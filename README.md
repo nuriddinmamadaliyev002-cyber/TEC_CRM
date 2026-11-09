@@ -84,6 +84,15 @@ Menyuda yangi (ko'rilmagan) lid va nomzodlar soni ko'rsatiladi. Bot backend bila
 Yopishdan oldin panel ogohlantiradi («Guruhda N ta o'quvchi bor…»). Guruhlar ro'yxatida **Faol** (ochiq + boshlangan) va **Yopilgan** bo'limlari alohida.
 - To'lovlar oylik reestr ko'rinishida yuritiladi, Excel'ga yuklanadi.
 
+## Audit jurnali va oyliklarni tasdiqlash (rahbar)
+
+- **Jurnal** (`/api/rahbar/audit`, superadmin sahifasida «🧾 Jurnal»): kim, qachon, nimani yaratdi/o'zgartirdi/o'chirdi (to'lovlar, o'quvchilar, o'qituvchilar va ularning haq sozlamalari, guruhlar, fanlar, lidlar, vakansiya/nomzodlar, adminlar, filiallar, login urinishlari). O'zgarishlarda eski/yangi qiymatlar saqlanadi, parollar va hashlar hech qachon yozilmaydi. Filtr: filial, obyekt, amal, kim, sana oralig'i, qidiruv.
+- Jurnal jadvali **faqat to'ldiriladi**: bazadagi trigger (`trg_audit_ozgarmas`) UPDATE/DELETE ni taqiqlaydi. Eskirgan yozuvlarni tozalash kerak bo'lsa, triggerni DBA o'chirib qo'yishi kerak. Filial o'chirilsa ham jurnal saqlanadi.
+- **Oyni tasdiqlash**: tugagan oyning o'qituvchi oyliklari «muzlatiladi» (`oylik_oylar` — snapshot). Shundan so'ng filial paneli, umumiy sahifa va Excel shu qotirilgan hisobni ko'rsatadi; o'sha oyning davomatini o'zgartirib bo'lmaydi (409). Ogohlantirishlar (masalan, haqi belgilanmagan o'qituvchi) bo'lsa, rahbar tasdiqlashni majburlashi mumkin.
+- **Haq to'lovi**: tasdiqlangan oy uchun o'qituvchiga to'langan summalar yoziladi (`oylik_tolovlar`), ortiqcha to'lash mumkin emas; qoldiq va holat (to'lanmagan / qisman / to'langan) ko'rsatiladi.
+- **Qayta ochish**: sabab bilan; agar o'qituvchilarga haq to'langan bo'lsa, avval to'lov yozuvlarini o'chirish kerak.
+- Yangi jadvallar `npm run db:setup` (yoki server qayta ishga tushganda) bilan avtomatik yaratiladi.
+
 ## Yuzni tanib davomat (kamera)
 Admin telefon/planshet (orqa kamera) yoki kompyuter kamerasi bilan guruhni suratga oladi, tizim taniganlarni ro'yxatda **«Keldi»** qilib qo'yadi.
 Admin natijani ko'rib, odatdagidek **«Saqlash»** ni bosadi (kelmadi / sababli ni qo'lda belgilaydi).

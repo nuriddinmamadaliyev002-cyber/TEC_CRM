@@ -282,3 +282,60 @@ ALTER TABLE oqituvchilar ADD COLUMN IF NOT EXISTS haq_turi TEXT CHECK (haq_turi 
 ALTER TABLE oqituvchilar ADD COLUMN IF NOT EXISTS soat_stavka NUMERIC(14,2) CHECK (soat_stavka IS NULL OR soat_stavka >= 0);
 ALTER TABLE oqituvchilar ADD COLUMN IF NOT EXISTS oylik_maosh NUMERIC(14,2) CHECK (oylik_maosh IS NULL OR oylik_maosh >= 0);
 ALTER TABLE oqituvchilar ADD COLUMN IF NOT EXISTS foiz NUMERIC(5,2) CHECK (foiz IS NULL OR (foiz >= 0 AND foiz <= 100));
+
+-- ═══ Audit jurnali (migratsiya: qayta ishga tushirish xavfsiz) ═══════════════════════════════════════════════════
+-- Kim, qachon, nimani o'zgartirdi. Faqat QO'SHILADI: yozuvni o'zgartirish/o'chirish trigger bilan taqiqlangan.
+-- filial_id'ga FK yo'q — filial o'chirilsa ham jurnal qoladi (filial nomi nusxalanadi).
+CREATE TABLE IF NOT EXISTS audit_jurnali (
+  id          BIGSERIAL PRIMARY KEY,
+  vaqt        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  aktor_turi  TEXT NOT NULL,                 -- 'superadmin' | 'admin' | 'tizim'
+  aktor_id    INTEGER,
+  aktor_nomi  TEXT NOT NULL DEFAULT '',
+  filial_id   INTEGER,
+  filial_nomi TEXT NOT NULL DEFAULT '',
+  amal        TEXT NOT NULL,                 -- yaratdi | ozgartirdi | ochirdi | kirdi | kira_olmadi | muzlatdi | qayta_ochdi
+  obyekt      TEXT NOT NULL,                 -- tolov | oquvchi | oqituvchi | guruh | fan | lid | vakansiya | nomzod | admin | filial | kirish | oylik
+  obyekt_id   INTEGER,
+  tavsif      TEXT NOT NULL DEFAULT '',
+  eski        JSONB,
+  yangi       JSONB,
+  ip          TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_audit_vaqt   ON audit_jurnali(vaqt DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_filial ON audit_jurnali(filial_id, vaqt DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_obyekt ON audit_jurnali(obyekt, obyekt_id);
+CREATE OR REPLACE FUNCTION audit_ozgarmas() RETURNS trigger AS $f$
+BEGIN
+  RAISE EXCEPTION 'Audit jurnali o''zgartirilmaydi va o''chirilmaydi';
+END $f$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS trg_audit_ozgarmas ON audit_jurnali;
+CREATE TRIGGER trg_audit_ozgarmas BEFORE UPDATE OR DELETE ON audit_jurnali FOR EACH ROW EXECUTE FUNCTION audit_ozgarmas();
+
+-- ═══ O'qituvchi oyliklarini muzlatish (oyni tasdiqlash) va o'qituvchilarga to'langan haq ═══
+-- oylik_oylar: tasdiqlangan oy (filial bo'yicha) — hisobot surati (snapshot) shu yerda saqlanadi, keyingi o'zgarishlar (o'qituvchi/stavka/guruh
+-- almashishi) eski oyni buzmaydi. oylik_tolovlar: rahbar o'qituvchiga haqiqatda bergan summalar (faqat tasdiqlangan oy uchun).
+CREATE TABLE IF NOT EXISTS oylik_oylar (
+  id         SERIAL PRIMARY KEY,
+  filial_id  INTEGER NOT NULL REFERENCES filiallar(id) ON DELETE RESTRICT,
+  oy         DATE NOT NULL,                 -- oyning 1-sanasi
+  jami       NUMERIC(16,2) NOT NULL,
+  snapshot   JSONB NOT NULL,
+  tasdiqladi TEXT NOT NULL DEFAULT '',
+  yopilgan   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (filial_id, oy)
+);
+CREATE TABLE IF NOT EXISTS oylik_tolovlar (
+  id             SERIAL PRIMARY KEY,
+  filial_id      INTEGER NOT NULL REFERENCES filiallar(id) ON DELETE RESTRICT,
+  oy             DATE NOT NULL,
+  oqituvchi_id   INTEGER REFERENCES oqituvchilar(id) ON DELETE SET NULL,
+  oqituvchi_nomi TEXT NOT NULL DEFAULT '',
+  summa          NUMERIC(14,2) NOT NULL CHECK (summa > 0),
+  sana           DATE NOT NULL DEFAULT CURRENT_DATE,
+  usul           TEXT NOT NULL DEFAULT 'naqd' CHECK (usul IN ('naqd','karta','otkazma')),
+  izoh           TEXT NOT NULL DEFAULT '',
+  kiritgan       TEXT NOT NULL DEFAULT '',
+  yaratilgan     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_oylik_tolovlar ON oylik_tolovlar(filial_id, oy);

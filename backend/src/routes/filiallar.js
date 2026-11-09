@@ -3,6 +3,7 @@ const { Router } = require('express');
 const pool = require('../db');
 const { requireAuth } = require('../middleware/jwt');
 const { str, int, bad, wrap } = require('../util');
+const audit = require('../audit');
 
 const router = Router();
 router.use(requireAuth(['superadmin']));
@@ -31,21 +32,29 @@ router.post('/', wrap(async (req, res) => {
   const { err, v } = body(req.body); if (err) return bad(res, err);
   try {
     const r = await pool.query('INSERT INTO filiallar(nomi,faol) VALUES($1,$2) RETURNING id', v);
+    await audit.log(req, { amal: 'yaratdi', obyekt: 'filial', id: r.rows[0].id, filial_id: r.rows[0].id, tavsif: `Filial yaratildi: ${v[0]}` });
     res.json({ ok: true, id: r.rows[0].id });
   } catch (e) { if (e.code === '23505') return bad(res, 'Bu nomli filial bor', 409); throw e; }
 }));
 router.put('/:id', wrap(async (req, res) => {
   const { err, v } = body(req.body); if (err) return bad(res, err);
   try {
-    const r = await pool.query('UPDATE filiallar SET nomi=$1, faol=$2 WHERE id=$3', [...v, int(req.params.id) || 0]);
-    r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+    const id = int(req.params.id) || 0, old = (await pool.query('SELECT nomi, faol FROM filiallar WHERE id=$1', [id])).rows[0];
+    const r = await pool.query('UPDATE filiallar SET nomi=$1, faol=$2 WHERE id=$3', [...v, id]);
+    if (!r.rowCount) return bad(res, 'Topilmadi', 404);
+    const d = audit.diff(old, { nomi: v[0], faol: v[1] }, ['nomi', 'faol']);
+    if (d) await audit.log(req, { amal: 'ozgartirdi', obyekt: 'filial', id, filial_id: id, tavsif: `Filial o'zgartirildi: ${v[0]}`, ...d });
+    res.json({ ok: true });
   } catch (e) { if (e.code === '23505') return bad(res, 'Bu nomli filial bor', 409); throw e; }
 }));
 // Faqat butunlay bo'sh filialni (admin ham, ma'lumot ham yo'q) o'chirish mumkin; aks holda nofaol qilinadi.
 router.delete('/:id', wrap(async (req, res) => {
   try {
-    const r = await pool.query('DELETE FROM filiallar WHERE id=$1', [int(req.params.id) || 0]);
-    r.rowCount ? res.json({ ok: true }) : bad(res, 'Topilmadi', 404);
+    const id = int(req.params.id) || 0, old = (await pool.query('SELECT nomi, faol FROM filiallar WHERE id=$1', [id])).rows[0];
+    const r = await pool.query('DELETE FROM filiallar WHERE id=$1', [id]);
+    if (!r.rowCount) return bad(res, 'Topilmadi', 404);
+    await audit.log(req, { amal: 'ochirdi', obyekt: 'filial', id, filial_id: id, filial_nomi: old && old.nomi, tavsif: `Filial o'chirildi: ${old && old.nomi}`, eski: old });
+    res.json({ ok: true });
   } catch (e) {
     if (e.code === '23503') return bad(res, "Filialda adminlar yoki ma'lumotlar bor. O'chirish o'rniga uni nofaol qiling", 409);
     throw e;

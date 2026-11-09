@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const pool = require('../db');
 const { generateToken, requireAuth } = require('../middleware/jwt');
+const audit = require('../audit');
 
 const router = Router();
 
@@ -44,22 +45,28 @@ router.post('/login', limiter(LOGIN_MAX, 15 * 60 * 1000), async (req, res) => {
     // 1) Superadmin
     if (U && H && eq(username, U)) {
       const ok = await bcrypt.compare(parol, H.startsWith('$2') ? H : DUMMY_HASH);
-      if (!ok) return res.status(401).json(FAIL);
+      if (!ok) { await audit.log(req, { amal: 'kira_olmadi', obyekt: 'kirish', tavsif: "Rahbar (superadmin) hisobiga noto'g'ri parol bilan kirishga urinish", aktor: { turi: 'tizim', id: null, nomi: username.slice(0, 100) } }); return res.status(401).json(FAIL); }
       const ism = process.env.SUPERADMIN_NAME || 'Superadmin';
+      await audit.log(req, { amal: 'kirdi', obyekt: 'kirish', tavsif: 'Rahbar (superadmin) tizimga kirdi', aktor: { turi: 'superadmin', id: null, nomi: ism } });
       return res.json({ ok: true, token: generateToken({ role: 'superadmin', ism }), role: 'superadmin', ism });
     }
 
     // 2) Admin (kurs_adminlar jadvali)
     const r = username
-      ? await pool.query(`SELECT a.id, a.ism, a.familiya, a.parol_hash, (a.faol AND f.faol) AS faol
+      ? await pool.query(`SELECT a.id, a.ism, a.familiya, a.parol_hash, a.filial_id, (a.faol AND f.faol) AS faol
                             FROM kurs_adminlar a JOIN filiallar f ON f.id=a.filial_id WHERE LOWER(a.login)=LOWER($1)`, [username])
       : { rowCount: 0, rows: [] };
     const a = r.rows[0];
     const ok = await bcrypt.compare(parol, a && a.parol_hash ? a.parol_hash : DUMMY_HASH);
-    if (!a || !a.parol_hash || !ok || !a.faol) return res.status(401).json(FAIL);
+    if (!a || !a.parol_hash || !ok || !a.faol) {
+      await audit.log(req, { amal: 'kira_olmadi', obyekt: 'kirish', filial_id: a ? a.filial_id : null, aktor: { turi: 'tizim', id: a ? a.id : null, nomi: username.slice(0, 100) },
+        tavsif: !a ? "Noma'lum login bilan kirishga urinish" : !a.faol ? 'Nofaol hisob (yoki filial) bilan kirishga urinish' : "Noto'g'ri parol bilan kirishga urinish" });
+      return res.status(401).json(FAIL);
+    }
 
     const ism = `${a.familiya} ${a.ism}`.trim(); // FI: Familiya Ism
     await pool.query('UPDATE kurs_adminlar SET oxirgi_kirish=NOW() WHERE id=$1', [a.id]);
+    await audit.log(req, { amal: 'kirdi', obyekt: 'kirish', filial_id: a.filial_id, tavsif: 'Admin tizimga kirdi', aktor: { turi: 'admin', id: a.id, nomi: ism } });
     res.json({ ok: true, role: 'kurs_admin', ism, token: generateToken({ role: 'kurs_admin', entityId: a.id, ism }) });
   } catch (e) { console.error('login:', e.message); res.status(500).json({ ok: false, error: 'Server xatoligi' }); }
 });

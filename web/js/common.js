@@ -40,7 +40,7 @@
     if (r.status === 401 && d.expired && t) { relogin(); throw new Error('Sessiya tugadi'); }
     // Superadmin tanlagan filial o'chirilgan bo'lsa — filial tanlash sahifasiga qaytaramiz
     if (r.status === 404 && d.error === 'Filial topilmadi' && session.role() === 'superadmin') { filial.clear(); location.href = 'superadmin.html'; throw new Error(d.error); }
-    if (!r.ok || d.ok === false) throw new Error(d.error || 'Xatolik');
+    if (!r.ok || d.ok === false) { const e = new Error(d.error || 'Xatolik'); e.data = d; e.status = r.status; throw e; } // e.data — serverning to'liq javobi (masalan, ogohlantirishlar ro'yxati)
     return d;
   }
 
